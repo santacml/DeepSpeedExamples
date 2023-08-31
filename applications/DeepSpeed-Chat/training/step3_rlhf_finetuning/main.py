@@ -41,7 +41,7 @@ import sys
 sys.path.append(
     os.path.abspath(os.path.join(os.path.dirname(__file__), os.path.pardir)))
 from utils.data.data_utils import create_prompt_dataset, MiniDataset, DataCollatorRLHF, get_unsupervised_data
-from utils.utils import print_rank_0, to_device, save_hf_format, set_random_seed, get_all_reduce_mean, moving_average, save_zero_three_model, load_hf_tokenizer
+from utils.utils import print_rank_0, to_device, save_hf_format, set_random_seed, get_all_reduce_mean, moving_average, save_zero_three_model, load_hf_tokenizer, get_all_gather
 from utils.module.lora import convert_lora_to_linear_layer
 from utils.perf import print_throughput_step3
 
@@ -185,6 +185,14 @@ def parse_args():
         type=int,
         default=100,
         help="Number of steps for the warmup in the lr scheduler.")
+    parser.add_argument("--normalize_rm_scale",
+                        type=float,
+                        default=0,
+                        help="If this value is nonzero, the Reward Model will be normalized to this scale before PPO begins.")
+    parser.add_argument("--normalize_rm_samples",
+                        type=float,
+                        default=200,
+                        help="If RM normalization is enabled, use this many samples of the training data to normalize it..")
     parser.add_argument("--output_dir",
                         type=str,
                         default=None,
@@ -412,6 +420,39 @@ def create_datasets(args, tokenizer, train_phase=3):
 
     return prompt_train_dataloader, unsupervised_train_dataloader, num_total_iters
 
+@torch.no_grad()
+def evaluation_reward_normalization(args, trainer, prompt_train_dataloader, device):
+    normalize_rm_scale = args.normalize_rm_scale
+    normalize_rm_samples = args.normalize_rm_samples
+
+    reward_model = trainer.reward_model
+    ref_model = trainer.ref_model
+    reward_model.eval()
+    ref_model.eval()
+
+    all_scores = []
+    for step, batch_prompt in enumerate(prompt_train_dataloader):
+        if step == normalize_rm_samples: break
+
+        batch_prompt = to_device(batch_prompt, device)
+
+        out = trainer.generate_experience(
+            batch_prompt['prompt'],
+            batch_prompt['prompt_att_mask'],
+            step,
+            reward_only=True
+        )
+            
+        all_scores.append(out["rewards"].flatten())
+
+    ## normalization logic
+    all_scores = torch.cat(get_all_gather(torch.cat(all_scores)))
+    all_scores_mean = all_scores.mean().item()
+
+    bias = -all_scores_mean
+    scale = 1.0 / (normalize_rm_scale * all_scores.std() + 1e-9)
+
+    return bias, scale
 
 def main():
     args = parse_args()
@@ -462,6 +503,16 @@ def main():
 
     ppo_trainer = DeepSpeedPPOTrainerUnsupervised if unsupervised_training_enabled else DeepSpeedPPOTrainer
     trainer = ppo_trainer(rlhf_engine, args)
+    
+    if args.normalize_rm_scale > 0 :
+        print_rank_0("***** Running RM Normalization*****", args.global_rank)
+        bias, scale = evaluation_reward_normalization(args, trainer, prompt_train_dataloader, device)
+
+        print_rank_0("Calculated stats for rm normalization...", args.global_rank)
+        print_rank_0(f"bias {bias}", args.global_rank)
+        print_rank_0(f"scale {scale}", args.global_rank)
+ 
+        rlhf_engine.normalize_reward_critic(bias, scale)
 
     # first number is how many experience-batch to generate, second number is the training batch size, which is the micro-batch size used
     exp_mini_dataset = MiniDataset(args.generation_batches,

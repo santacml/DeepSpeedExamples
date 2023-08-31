@@ -28,6 +28,18 @@ class RewardModel(nn.Module):
         self.rwtranrsformer = base_model
         self.PAD_ID = tokenizer.pad_token_id
 
+        bias = torch.tensor([0.0], device=self.v_head.weight.device)
+        self.register_buffer("bias", bias)
+        scale = torch.tensor([1.0], device=self.v_head.weight.device)
+        self.register_buffer("scale", scale)
+
+        self.bias_scale_set = False
+
+    def set_bias_scale(self, bias, scale):
+        self.bias[:] = bias
+        self.scale[:] = scale
+        self.bias_scale_set = True
+    
     def gradient_checkpointing_enable(self):
         self.rwtranrsformer.gradient_checkpointing_enable()
 
@@ -59,6 +71,10 @@ class RewardModel(nn.Module):
 
         hidden_states = transformer_outputs[0]
         rewards = self.v_head(hidden_states).squeeze(-1)
+        
+        if self.bias_scale_set:
+            rewards = (rewards+self.bias)*self.scale
+
         chosen_mean_scores = []
         rejected_mean_scores = []
 
