@@ -7,6 +7,7 @@ import argparse
 import os
 import math
 import sys
+import shutil
 
 import torch
 from torch.utils.data import DataLoader, RandomSampler, SequentialSampler
@@ -26,7 +27,7 @@ from utils.model.model_utils import create_critic_model
 from utils.data.data_utils import create_prompt_dataset, DataCollatorReward
 from utils.utils import print_rank_0, to_device, save_hf_format, set_random_seed, get_all_reduce_mean, get_optimizer_grouped_parameters, save_zero_three_model, load_hf_tokenizer, AzureMLLogger
 from utils.ds_utils import get_train_ds_config
-from utils.module.lora import convert_linear_layer_to_lora, convert_lora_to_linear_layer, only_optimize_lora_parameters, make_model_gradient_checkpointing_compatible
+from utils.module.lora import convert_linear_layer_to_lora, convert_lora_to_linear_layer, only_optimize_lora_parameters, make_model_gradient_checkpointing_compatible, unfuse_lora_linear_layer
 
 
 def parse_args():
@@ -185,6 +186,9 @@ def parse_args():
     parser = deepspeed.add_config_arguments(parser)
     args = parser.parse_args()
 
+    assert args.model_path or args.model_name
+    args.model_name_or_path = args.model_path if args.model_path  else args.model_name
+
     return args
 
 
@@ -206,9 +210,6 @@ def main():
         # Initializes the distributed backend which will take care of sychronizing nodes/GPUs
         # torch.distributed.init_process_group(backend='nccl')
         deepspeed.init_distributed()
-
-    assert args.model_path or args.model_name
-    args.model_name_or_path = args.model_path if args.model_path  else args.model_name
 
     args.global_rank = torch.distributed.get_rank()
 
@@ -338,6 +339,8 @@ def main():
     azureml_logger.log("val_acc", float(acc))
     azureml_logger.log("val_reward", float(reward_score))
 
+    best_val_acc = 0
+    best_val_acc_epoch = 0
     global_step = 0
     for epoch in range(args.num_train_epochs):
         print_rank_0(
@@ -372,7 +375,31 @@ def main():
         azureml_logger.log("val_acc", float(acc))
         azureml_logger.log("val_reward", float(reward_score))
         rm_model.tput_timer.update_epoch_count()
-        
+
+        if acc >= best_val_acc:
+            best_val_acc = acc
+            best_val_acc_epoch = epoch
+
+            if args.output_dir is not None:
+                print_rank_0('Saving intermediate model ...', args.global_rank)
+                rm_model = convert_lora_to_linear_layer(rm_model)
+
+                if args.global_rank == 0:
+                    save_hf_format(rm_model, tokenizer, args, sub_folder=str(epoch))
+
+                if args.zero_stage == 3:
+                    # For zero stage 3, each gpu only has a part of the model, so we need a special save function
+                    save_zero_three_model(rm_model,
+                                        args.global_rank,
+                                        os.path.join(args.output_dir, str(epoch)),
+                                        zero_stage=args.zero_stage)
+
+                rm_model = unfuse_lora_linear_layer(rm_model)
+
+    if args.global_rank == 0:
+        print_rank_0(f"Copying best model... best model epoch is {best_val_acc_epoch} with value {best_val_acc}")
+        best_model_dir = os.path.join(args.output_dir, str(best_val_acc_epoch))
+        shutil.copytree(best_model_dir, args.output_dir, dirs_exist_ok=True)
 
     if args.output_dir is not None:
         print_rank_0('saving model ...', args.global_rank)

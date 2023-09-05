@@ -183,6 +183,13 @@ def load_state_dict_into_model(model_to_load=None,
     return error_msgs
 
 
+def get_all_gather(tensor):
+    world = torch.distributed.get_world_size()
+    out = [torch.zeros(tensor.shape, dtype=tensor.dtype, device=tensor.device) for n in range(world)]
+    torch.distributed.all_gather(out, tensor)
+    return out
+
+
 def get_optimizer_grouped_parameters(
     model,
     weight_decay,

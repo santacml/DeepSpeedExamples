@@ -24,8 +24,6 @@ import torch
 from torch.utils.data import DataLoader, RandomSampler
 from torch.utils.data.distributed import DistributedSampler
 
-from torch.utils.tensorboard import SummaryWriter
-
 from transformers import (
     SchedulerType,
     default_data_collator,
@@ -370,6 +368,7 @@ def parse_args():
     args = parser.parse_args()
 
     if args.enable_tensorboard:
+        from torch.utils.tensorboard import SummaryWriter
         print(
             f"Tensorboard logs going to: {args.tensorboard_path}/step3_tensorboard_logs"
         )
@@ -386,6 +385,12 @@ def parse_args():
         raise ValueError(
             "The combination of [actor_zero_stage==2, critic_zero_stage==2, enable_hybrid_engine=True, offload=True, lora=False] is currently unsupported due to training instability!"
         )
+
+    assert args.actor_model_path or args.actor_model_name
+    args.actor_model_name_or_path = args.actor_model_path if args.actor_model_path  else args.actor_model_name
+
+    assert args.critic_model_path or args.critic_model_name
+    args.critic_model_name_or_path = args.critic_model_path if args.critic_model_path  else args.critic_model_name
 
     return args
 
@@ -488,12 +493,6 @@ def main():
         # Initializes the distributed backend which will take care of sychronizing nodes/GPUs
         deepspeed.init_distributed()
 
-    assert args.actor_model_path or args.actor_model_name
-    args.actor_model_name_or_path = args.actor_model_path if args.actor_model_path  else args.actor_model_name
-
-    assert args.critic_model_path or args.critic_model_name
-    args.critic_model_name_or_path = args.critic_model_path if args.critic_model_path  else args.critic_model_name
-
     args.global_rank = torch.distributed.get_rank()
 
     azureml_logger = AzureMLLogger(args)
@@ -554,7 +553,7 @@ def main():
         print_rank_0(f"bias {bias}", args.global_rank)
         print_rank_0(f"scale {scale}", args.global_rank)
  
-        rlhf_engine.normalize_reward_critic(bias, scale)
+        trainer.normalize_reward_critic(bias, scale)
 
     # first number is how many experience-batch to generate, second number is the training batch size, which is the micro-batch size used
     exp_mini_dataset = MiniDataset(args.generation_batches,

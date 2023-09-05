@@ -295,10 +295,10 @@ class DeepSpeedPPOTrainer():
         return advantages.detach(), returns
 
     def normalize_reward_critic(self, bias, scale):
-        reward_model = self.reward
+        reward_model = self.reward_model
         reward_model.set_bias_scale(bias, scale)
         
-        critic_model = self.critic
+        critic_model = self.critic_model
         critic_model.set_bias_scale(bias, scale)
 
     def _validate_training_mode(self):
