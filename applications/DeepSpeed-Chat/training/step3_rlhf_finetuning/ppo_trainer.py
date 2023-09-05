@@ -116,7 +116,7 @@ class DeepSpeedPPOTrainer():
 
         return out_seq
 
-    def generate_experience(self, prompts, mask, step):
+    def generate_experience(self, prompts, mask, step, reward_only=False):
         self.eval()
         generate_start = time.time()
         seq = self._generate_sequence(prompts, mask, step)
@@ -126,25 +126,33 @@ class DeepSpeedPPOTrainer():
         pad_token_id = self.tokenizer.pad_token_id
         attention_mask = seq.not_equal(pad_token_id).long()
         with torch.no_grad():
-            output = self.actor_model(seq, attention_mask=attention_mask)
-            output_ref = self.ref_model(seq, attention_mask=attention_mask)
             reward_score = self.reward_model.forward_value(
                 seq, attention_mask,
                 prompt_length=self.prompt_length)['chosen_end_scores'].detach(
                 )
-            values = self.critic_model.forward_value(
-                seq, attention_mask, return_value_only=True).detach()[:, :-1]
+            
+            output_ref = None
+            output = None
+            values = None
+            if not reward_only:
+                output_ref = self.ref_model(seq, attention_mask=attention_mask)
+                output = self.actor_model(seq, attention_mask=attention_mask)
+                values = self.critic_model.forward_value(
+                    seq, attention_mask, return_value_only=True).detach()[:, :-1]
 
-        logits = output.logits
-        logits_ref = output_ref.logits
+        logprobs = None
+        logprobs_ref = None
+        if not reward_only:
+            logprobs = gather_log_probs(output.logits[:, :-1, :], seq[:, 1:])
+            logprobs_ref = gather_log_probs(output_ref.logits[:, :-1, :], seq[:, 1:])
+
 
         self.generate_time = generate_end - generate_start
 
         return {
             'prompts': prompts,
-            'logprobs': gather_log_probs(logits[:, :-1, :], seq[:, 1:]),
-            'ref_logprobs': gather_log_probs(logits_ref[:, :-1, :], seq[:,
-                                                                        1:]),
+            'logprobs': logprobs,
+            'ref_logprobs': logprobs_ref,
             'value': values,
             'rewards': reward_score,
             'input_ids': seq,
@@ -283,6 +291,13 @@ class DeepSpeedPPOTrainer():
         advantages = torch.stack(advantages_reversed[::-1], dim=1)
         returns = advantages + values[:, start:]
         return advantages.detach(), returns
+
+    def normalize_reward_critic(self, bias, scale):
+        reward_model = self.reward
+        reward_model.set_bias_scale(bias, scale)
+        
+        critic_model = self.critic
+        critic_model.set_bias_scale(bias, scale)
 
     def _validate_training_mode(self):
         assert self.actor_model.module.training
