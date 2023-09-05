@@ -41,7 +41,7 @@ import sys
 sys.path.append(
     os.path.abspath(os.path.join(os.path.dirname(__file__), os.path.pardir)))
 from utils.data.data_utils import create_prompt_dataset, MiniDataset, DataCollatorRLHF, get_unsupervised_data
-from utils.utils import print_rank_0, to_device, save_hf_format, set_random_seed, get_all_reduce_mean, moving_average, save_zero_three_model, load_hf_tokenizer, get_all_gather
+from utils.utils import print_rank_0, to_device, save_hf_format, set_random_seed, get_all_reduce_mean, moving_average, save_zero_three_model, load_hf_tokenizer, get_all_gather, AzureMLLogger
 from utils.module.lora import convert_lora_to_linear_layer
 from utils.perf import print_throughput_step3
 
@@ -92,17 +92,33 @@ def parse_args():
                         default=27.8,
                         help='''gamma in Equation 2 from InstructGPT paper''')
     parser.add_argument(
-        "--actor_model_name_or_path",
+        "--actor_model_name",
         type=str,
         help=
-        "Path to pretrained model or model identifier from huggingface.co/models.",
-        required=True)
+        "Model identifier from huggingface.co/models.",
+        required=False,
+    )
     parser.add_argument(
-        "--critic_model_name_or_path",
+        "--actor_model_path",
         type=str,
         help=
-        "Path to pretrained model or model identifier from huggingface.co/models.",
-        required=True)
+        "Path to pretrained model.",
+        required=False,
+    )
+    parser.add_argument(
+        "--critic_model_name",
+        type=str,
+        help=
+        "Model identifier from huggingface.co/models.",
+        required=False,
+    )
+    parser.add_argument(
+        "--critic_model_path",
+        type=str,
+        help=
+        "Path to pretrained model.",
+        required=False,
+    )
     parser.add_argument(
         "--num_padding_at_beginning",
         type=int,
@@ -456,6 +472,13 @@ def evaluation_reward_normalization(args, trainer, prompt_train_dataloader, devi
 
 def main():
     args = parse_args()
+    
+    if "LOCAL_RANK" in os.environ:
+        local_rank = os.environ.get('LOCAL_RANK')
+        args.local_rank = int(local_rank)
+        print("My local rank is", args.local_rank)
+
+        torch.cuda.set_device(args.local_rank)
 
     if args.local_rank == -1:
         device = torch.device("cuda")
@@ -465,7 +488,15 @@ def main():
         # Initializes the distributed backend which will take care of sychronizing nodes/GPUs
         deepspeed.init_distributed()
 
+    assert args.actor_model_path or args.actor_model_name
+    args.actor_model_name_or_path = args.actor_model_path if args.actor_model_path  else args.actor_model_name
+
+    assert args.critic_model_path or args.critic_model_name
+    args.critic_model_name_or_path = args.critic_model_path if args.critic_model_path  else args.critic_model_name
+
     args.global_rank = torch.distributed.get_rank()
+
+    azureml_logger = AzureMLLogger(args)
 
     unsupervised_training_enabled = args.unsupervised_dataset_name and args.unsupervised_dataset_config_name
     if unsupervised_training_enabled:
@@ -481,6 +512,16 @@ def main():
     # load_hf_tokenizer will get the correct tokenizer and set padding tokens based on the model family
     tokenizer = load_hf_tokenizer(args.actor_model_name_or_path,
                                   fast_tokenizer=True)
+    reward_tokenizer = load_hf_tokenizer(args.critic_model_name_or_path,
+                                            fast_tokenizer=True)
+    tokenizer_tokens = set(tokenizer.get_vocab().keys())
+    reward_tokenizer_tokens = set(reward_tokenizer.get_vocab().keys())
+
+    if tokenizer_tokens.isdisjoint(reward_tokenizer_tokens):
+        print_rank_0("Using different tokenizers for actor/reference and critic/reward model pairs.", args.global_rank)
+    else:
+        reward_tokenizer = None
+        
     prompt_train_dataloader, unsupervised_train_dataloader, num_total_iters = create_datasets(
         args=args, tokenizer=tokenizer, train_phase=3)
 
@@ -489,6 +530,7 @@ def main():
         actor_model_name_or_path=args.actor_model_name_or_path,
         critic_model_name_or_path=args.critic_model_name_or_path,
         tokenizer=tokenizer,
+        reward_tokenizer=reward_tokenizer,
         num_total_iters=num_total_iters,
         args=args)
 
@@ -596,6 +638,11 @@ def main():
                                        trainer.generate_time, training_time,
                                        args.global_rank)
                 average_reward = get_all_reduce_mean(average_reward).item()
+                azureml_logger.log("reward", float(average_reward / inner_iter))
+                azureml_logger.log("actor_loss", float(actor_loss))
+                azureml_logger.log("actor_loss_sum", float(actor_loss_sum))
+                azureml_logger.log("critic_loss", float(critic_loss))
+                azureml_logger.log("critic_loss_sum", float(critic_loss_sum))
                 print_rank_0(
                     f"Average reward score: {average_reward/inner_iter}",
                     args.global_rank)
@@ -650,7 +697,7 @@ def main():
                            args,
                            sub_folder='actor')
             save_hf_format(rlhf_engine.critic,
-                           tokenizer,
+                           tokenizer if reward_tokenizer is None else reward_tokenizer,
                            args,
                            sub_folder='critic')
             if args.enable_ema:

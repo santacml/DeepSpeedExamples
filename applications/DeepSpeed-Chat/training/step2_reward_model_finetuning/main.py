@@ -24,7 +24,7 @@ sys.path.append(
     os.path.abspath(os.path.join(os.path.dirname(__file__), os.path.pardir)))
 from utils.model.model_utils import create_critic_model
 from utils.data.data_utils import create_prompt_dataset, DataCollatorReward
-from utils.utils import print_rank_0, to_device, save_hf_format, set_random_seed, get_all_reduce_mean, get_optimizer_grouped_parameters, save_zero_three_model, load_hf_tokenizer
+from utils.utils import print_rank_0, to_device, save_hf_format, set_random_seed, get_all_reduce_mean, get_optimizer_grouped_parameters, save_zero_three_model, load_hf_tokenizer, AzureMLLogger
 from utils.ds_utils import get_train_ds_config
 from utils.module.lora import convert_linear_layer_to_lora, convert_lora_to_linear_layer, only_optimize_lora_parameters, make_model_gradient_checkpointing_compatible
 
@@ -52,11 +52,18 @@ def parse_args():
         default='/tmp/data_files/',
         help='Where to store the data-related files such as shuffle index.')
     parser.add_argument(
-        "--model_name_or_path",
+        "--model_name",
         type=str,
         help=
-        "Path to pretrained model or model identifier from huggingface.co/models.",
-        required=True,
+        "Model identifier from huggingface.co/models.",
+        required=False,
+    )
+    parser.add_argument(
+        "--model_path",
+        type=str,
+        help=
+        "Path to pretrained model.",
+        required=False,
     )
     parser.add_argument(
         "--num_padding_at_beginning",
@@ -183,6 +190,13 @@ def parse_args():
 
 def main():
     args = parse_args()
+    
+    if "LOCAL_RANK" in os.environ:
+        local_rank = os.environ.get('LOCAL_RANK')
+        args.local_rank = int(local_rank)
+        print("My local rank is", args.local_rank)
+
+        torch.cuda.set_device(args.local_rank)
 
     if args.local_rank == -1:
         device = torch.device("cuda")
@@ -193,7 +207,12 @@ def main():
         # torch.distributed.init_process_group(backend='nccl')
         deepspeed.init_distributed()
 
+    assert args.model_path or args.model_name
+    args.model_name_or_path = args.model_path if args.model_path  else args.model_name
+
     args.global_rank = torch.distributed.get_rank()
+
+    azureml_logger = AzureMLLogger(args)
 
     ds_config = get_train_ds_config(offload=args.offload,
                                     stage=args.zero_stage,
@@ -316,7 +335,10 @@ def main():
     print_rank_0(
         f"chosen_last_scores (higher is better) : {reward_score}, acc (higher is better) : {acc}",
         args.global_rank)
+    azureml_logger.log("val_acc", float(acc))
+    azureml_logger.log("val_reward", float(reward_score))
 
+    global_step = 0
     for epoch in range(args.num_train_epochs):
         print_rank_0(
             f"Beginning of Epoch {epoch+1}/{args.num_train_epochs}, Total Micro Batches {len(train_dataloader)}",
@@ -330,6 +352,12 @@ def main():
             rm_model.backward(loss)
             rm_model.step()
             mean_loss += loss.item()
+
+            azureml_logger.log("step", global_step)
+            azureml_logger.log("train_loss", float(loss))
+            azureml_logger.log("train_mean_loss", float(mean_loss/(step+1)))
+            global_step += 1
+
         print_rank_0(
             f"Epoch {epoch+1}/{args.num_train_epochs} with loss {mean_loss/(step+1)}",
             args.global_rank)
@@ -341,7 +369,10 @@ def main():
         print_rank_0(
             f"chosen_last_scores (higher is better) : {reward_score}, acc (higher is better) : {acc}",
             args.global_rank)
+        azureml_logger.log("val_acc", float(acc))
+        azureml_logger.log("val_reward", float(reward_score))
         rm_model.tput_timer.update_epoch_count()
+        
 
     if args.output_dir is not None:
         print_rank_0('saving model ...', args.global_rank)

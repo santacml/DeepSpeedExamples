@@ -25,7 +25,7 @@ from deepspeed.ops.adam import DeepSpeedCPUAdam, FusedAdam
 sys.path.append(
     os.path.abspath(os.path.join(os.path.dirname(__file__), os.path.pardir)))
 from utils.data.data_utils import create_prompt_dataset
-from utils.utils import print_rank_0, to_device, save_hf_format, set_random_seed, get_all_reduce_mean, get_optimizer_grouped_parameters, save_zero_three_model, load_hf_tokenizer
+from utils.utils import print_rank_0, to_device, save_hf_format, set_random_seed, get_all_reduce_mean, get_optimizer_grouped_parameters, save_zero_three_model, load_hf_tokenizer, AzureMLLogger
 from utils.ds_utils import get_train_ds_config
 from utils.module.lora import convert_linear_layer_to_lora, convert_lora_to_linear_layer, only_optimize_lora_parameters, make_model_gradient_checkpointing_compatible
 from utils.model.model_utils import create_hf_model
@@ -62,11 +62,18 @@ def parse_args():
         'Where to store the data-related files such as shuffle index. This needs to be on a local storage of a node (not on a shared storage)'
     )
     parser.add_argument(
-        "--model_name_or_path",
+        "--model_name",
         type=str,
         help=
-        "Path to pretrained model or model identifier from huggingface.co/models.",
-        required=True,
+        "Model identifier from huggingface.co/models.",
+        required=False,
+    )
+    parser.add_argument(
+        "--model_path",
+        type=str,
+        help=
+        "Path to pretrained model.",
+        required=False,
     )
     parser.add_argument(
         "--per_device_train_batch_size",
@@ -188,7 +195,14 @@ def parse_args():
 
 def main():
     args = parse_args()
+    
+    if "LOCAL_RANK" in os.environ:
+        local_rank = os.environ.get('LOCAL_RANK')
+        args.local_rank = int(local_rank)
+        print("My local rank is", args.local_rank)
 
+        torch.cuda.set_device(args.local_rank)
+    
     if args.local_rank == -1:
         device = torch.device("cuda")
     else:
@@ -198,7 +212,12 @@ def main():
         # torch.distributed.init_process_group(backend='nccl')
         deepspeed.init_distributed()
 
+    assert args.model_path or args.model_name
+    args.model_name_or_path = args.model_path if args.model_path  else args.model_name
+
     args.global_rank = torch.distributed.get_rank()
+
+    azureml_logger = AzureMLLogger(args)
 
     ds_config = get_train_ds_config(offload=args.offload,
                                     stage=args.zero_stage,
@@ -316,7 +335,9 @@ def main():
         args.global_rank)
     perplexity = evaluation(model, eval_dataloader)
     print_rank_0(f"ppl: {perplexity}", args.global_rank)
+    azureml_logger.log("val_ppl", float(perplexity))
 
+    global_step = 0
     for epoch in range(args.num_train_epochs):
         print_rank_0(
             f"Beginning of Epoch {epoch+1}/{args.num_train_epochs}, Total Micro Batches {len(train_dataloader)}",
@@ -338,6 +359,10 @@ def main():
             if torch.distributed.get_rank() == 0:
                 print_throughput(model.model, args, end - start,
                                  args.global_rank)
+            
+            azureml_logger.log("step", global_step)
+            azureml_logger.log("train_loss", float(loss))
+            global_step += 1
 
         # Evaluate perplexity on the validation set.
         print_rank_0(
@@ -346,6 +371,8 @@ def main():
         perplexity = evaluation(model, eval_dataloader)
         print_rank_0(f"ppl: {perplexity}", args.global_rank)
         model.tput_timer.update_epoch_count()
+        
+        azureml_logger.log("val_ppl", float(perplexity))
 
     if args.output_dir is not None:
         print_rank_0('saving the final model ...', args.global_rank)

@@ -12,6 +12,21 @@ import deepspeed
 from deepspeed.runtime.zero.partition_parameters import ZeroParamStatus
 import torch.nn as nn
 
+class AzureMLLogger(object):
+    def __init__(self, args):
+        self.rank = args.global_rank
+        self.run = None
+
+        try:
+            from azureml.core.run import Run
+            azureml_run = Run.get_context()
+            self.run = azureml_run
+        except ImportError:
+            azureml_run = None
+    
+    def log(self, name, value):
+        if self.run is not None and self.rank == 0:
+            self.run.log(name, value, description=name)
 
 def print_rank_0(msg, rank=0):
     if rank <= 0:
