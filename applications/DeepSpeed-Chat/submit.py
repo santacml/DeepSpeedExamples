@@ -60,8 +60,8 @@ def get_info(cluster):
     return default_compute_target, ws, ds, process_count_per_node
 
 def main():
-    model = "opt_1.3b"
-    # model = "llama_2_7b"
+    # model = "opt_1.3b"
+    model = "llama_2_7b"
     TASK = "Dahoas/rm-static"
 
 
@@ -159,9 +159,9 @@ def main():
         model_weights = None
         num_padding_at_beginning = 0
 
-        # model_weights = Dataset.File.from_files(path=[(ds, "llama-2/llama-2-7b/")],validate=True).as_mount()
+        model_weights = Dataset.File.from_files(path=[(ds, "llama-2/Llama-2-7b-hf/")],validate=True).as_mount()
         # model_weights = Dataset.File.from_files(path=[(ds, "llama/llama_7b_easylm_to_hf_conversion/")],validate=True).as_mount()
-        model_weights = Dataset.get_by_name(workspace=ws, name="llama_2_7b_hf", version=1).as_mount()
+        # model_weights = Dataset.get_by_name(workspace=ws, name="llama_2_7b_hf", version=1).as_mount()
 
     else:
         0/0
