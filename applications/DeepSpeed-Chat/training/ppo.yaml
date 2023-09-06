@@ -36,22 +36,24 @@ inputs:
     optional: false
     default: "2,4,4"
     type: string
-  actor_model_path: 
-    description: Actor model path
-    optional: true
-    type: path
-  actor_model_name: 
-    description: Actor model path
+  actor_model_name_or_path: 
+    description: Model path
     optional: true
     type: string
-  critic_model_path: 
-    description: Critic path
+  actor_model_dir: 
+    description: Model dir 
     optional: true
+    default: ""
     type: path
-  critic_model_name: 
-    description: Critic path
+  critic_model_name_or_path: 
+    description: Model path
     optional: true
     type: string
+  critic_model_dir: 
+    description: Model dir 
+    optional: true
+    default: ""
+    type: path
   num_padding_at_beginning: 
     description: num_padding_at_beginning
     optional: false
@@ -209,10 +211,10 @@ launcher:
     mkdir -p ./step3_rlhf_finetuning/utils/ && cp -ur utils/* ./step3_rlhf_finetuning/utils  && cd ./step3_rlhf_finetuning && python main.py
       --data_path {inputs.data_path} 
       --data_split {inputs.data_split}  
-      [--actor_model_path {inputs.actor_model_path} ]
-      [--critic_model_path {inputs.critic_model_path} ]
-      [--actor_model_name {inputs.actor_model_name} ]
-      [--critic_model_name {inputs.critic_model_name} ]
+      [--actor_model_name_or_path {inputs.actor_model_name_or_path}]
+      [--actor_model_dir {inputs.actor_model_dir} ]
+      [--critic_model_name_or_path {inputs.critic_model_name_or_path}]
+      [--critic_model_dir {inputs.critic_model_dir} ]
       --num_padding_at_beginning {inputs.num_padding_at_beginning} 
       --per_device_generation_batch_size {inputs.per_device_generation_batch_size}
       --per_device_training_batch_size {inputs.per_device_training_batch_size} 

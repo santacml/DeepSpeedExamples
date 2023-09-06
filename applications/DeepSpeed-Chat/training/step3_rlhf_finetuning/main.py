@@ -90,31 +90,31 @@ def parse_args():
                         default=27.8,
                         help='''gamma in Equation 2 from InstructGPT paper''')
     parser.add_argument(
-        "--actor_model_name",
+        "--actor_model_name_or_path",
         type=str,
         help=
-        "Model identifier from huggingface.co/models.",
+        "Path to pretrained model or model identifier from huggingface.co/models.",
+        required=True,
+    )
+    parser.add_argument(
+        "--actor_model_dir",
+        type=str,
+        help=
+        "Directory location of model (joined with model_name_or_path).",
         required=False,
     )
     parser.add_argument(
-        "--actor_model_path",
+        "--critic_model_name_or_path",
         type=str,
         help=
-        "Path to pretrained model.",
-        required=False,
+        "Path to pretrained model or model identifier from huggingface.co/models.",
+        required=True,
     )
     parser.add_argument(
-        "--critic_model_name",
+        "--critic_model_dir",
         type=str,
         help=
-        "Model identifier from huggingface.co/models.",
-        required=False,
-    )
-    parser.add_argument(
-        "--critic_model_path",
-        type=str,
-        help=
-        "Path to pretrained model.",
+        "Directory location of model (joined with model_name_or_path).",
         required=False,
     )
     parser.add_argument(
@@ -386,11 +386,22 @@ def parse_args():
             "The combination of [actor_zero_stage==2, critic_zero_stage==2, enable_hybrid_engine=True, offload=True, lora=False] is currently unsupported due to training instability!"
         )
 
-    assert args.actor_model_path or args.actor_model_name
-    args.actor_model_name_or_path = args.actor_model_path if args.actor_model_path  else args.actor_model_name
+    
+    if args.actor_model_dir:
+        if args.actor_model_name_or_path:
+            actor_model_path = os.path.join(args.actor_model_dir, args.actor_model_name_or_path)
+            assert os.path.exists(actor_model_path), f"model_path {actor_model_path} does not exist"
+            args.actor_model_name_or_path = actor_model_path
+        else:
+            args.actor_model_name_or_path = args.actor_model_dir
 
-    assert args.critic_model_path or args.critic_model_name
-    args.critic_model_name_or_path = args.critic_model_path if args.critic_model_path  else args.critic_model_name
+    if args.critic_model_dir:
+        if args.critic_model_name_or_path:
+            critic_model_path = os.path.join(args.critic_model_dir, args.critic_model_name_or_path)
+            assert os.path.exists(critic_model_path), f"model_path {critic_model_path} does not exist"
+            args.critic_model_name_or_path = critic_model_path
+        else:
+            args.critic_model_name_or_path = args.critic_model_dir
 
     return args
 

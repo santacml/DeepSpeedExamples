@@ -112,8 +112,8 @@ def main():
         all_datasets_path =  "Dahoas/rm-static"
         
 
-        per_device_train_batch_size = 4
-        per_device_eval_batch_size = 16
+        per_device_train_batch_size = 2
+        per_device_eval_batch_size = 4
         
         gradient_accumulation_steps=1
 
@@ -134,9 +134,9 @@ def main():
         reward_loss_mult=.1
 
 
-        ppo_per_device_train_batch_size = 6
-        per_device_mini_train_batch_size= 8 
-        ppo_gradient_accumulation_steps=3
+        ppo_per_device_train_batch_size = 1
+        per_device_mini_train_batch_size= 2 
+        ppo_gradient_accumulation_steps=20
     
     
         actor_learning_rate=5e-4
@@ -152,16 +152,17 @@ def main():
         model_weights = None
         num_padding_at_beginning = 0
         
-        sft_model_name = "facebook/opt-1.3b"
-        rm_model_name = "facebook/opt-1.3b"
+        model_dir = None
+        model_name_or_path = "facebook/opt-1.3b"
         
     elif model == "llama_2_7b":
         model_weights = None
         num_padding_at_beginning = 0
 
-        model_weights = Dataset.File.from_files(path=[(ds, "llama-2/Llama-2-7b-hf/")],validate=True).as_mount()
-        # model_weights = Dataset.File.from_files(path=[(ds, "llama/llama_7b_easylm_to_hf_conversion/")],validate=True).as_mount()
-        # model_weights = Dataset.get_by_name(workspace=ws, name="llama_2_7b_hf", version=1).as_mount()
+        model_dir = Dataset.File.from_files(path=[(ds, "llama-2/Llama-2-7b-hf/")],validate=True).as_mount()
+        # model_dir = Dataset.File.from_files(path=[(ds, "llama-2/")],validate=True).as_mount()
+        # model_name_or_path = "Llama-2-7b-hf"
+        model_name_or_path = ""
 
     else:
         0/0
@@ -214,8 +215,8 @@ def main():
                 data_path=all_datasets_path,
                 # data_split=data_split,
                 data_split="4,2,4",
-                model_name=sft_model_name,
-                model_path=model_weights,
+                model_dir=model_dir,
+                model_name_or_path=model_name_or_path,
                 per_device_train_batch_size=per_device_train_batch_size,
                 per_device_eval_batch_size=per_device_eval_batch_size,
                 max_seq_len=max_seq_len,
@@ -252,8 +253,8 @@ def main():
             rm_trainer = rm_train_func(
                 data_path=all_datasets_path,
                 data_split=data_split,
-                model_name=rm_model_name,
-                model_path=model_weights,
+                model_dir=model_dir,
+                model_name_or_path=model_name_or_path,
                 per_device_train_batch_size=rm_per_device_train_batch_size,
                 per_device_eval_batch_size=per_device_eval_batch_size,
                 max_seq_len=max_seq_len,
@@ -289,8 +290,10 @@ def main():
             ppo = ppo_func(
                 data_path=all_datasets_path,
                 data_split=data_split,
-                actor_model_path=sft_model_weights,
-                critic_model_path=rm_model_weights,
+                actor_model_dir=model_dir,
+                actor_model_name_or_path=model_name_or_path,
+                critic_model_dir=model_dir,
+                critic_model_name_or_path=model_name_or_path,
                 num_padding_at_beginning=num_padding_at_beginning,
                 per_device_generation_batch_size=per_device_train_batch_size,
                 per_device_training_batch_size=per_device_mini_train_batch_size,

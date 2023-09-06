@@ -63,17 +63,17 @@ def parse_args():
         'Where to store the data-related files such as shuffle index. This needs to be on a local storage of a node (not on a shared storage)'
     )
     parser.add_argument(
-        "--model_name",
+        "--model_name_or_path",
         type=str,
         help=
-        "Model identifier from huggingface.co/models.",
-        required=False,
+        "Path to pretrained model or model identifier from huggingface.co/models.",
+        required=True,
     )
     parser.add_argument(
-        "--model_path",
+        "--model_dir",
         type=str,
         help=
-        "Path to pretrained model.",
+        "Directory location of model (joined with model_name_or_path).",
         required=False,
     )
     parser.add_argument(
@@ -191,8 +191,13 @@ def parse_args():
     parser = deepspeed.add_config_arguments(parser)
     args = parser.parse_args()
 
-    assert args.model_path or args.model_name
-    args.model_name_or_path = args.model_path if args.model_path  else args.model_name
+    if args.model_dir:
+        if args.model_name_or_path:
+            model_path = os.path.join(args.model_dir, args.model_name_or_path)
+            assert os.path.exists(model_path), f"model_path {model_path} does not exist"
+            args.model_name_or_path = model_path
+        else:
+            args.model_name_or_path = args.model_dir
 
     return args
 

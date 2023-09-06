@@ -39,15 +39,15 @@ inputs:
     optional: false
     default: "2,4,4"
     type: string
-  model_path: 
+  model_name_or_path: 
     description: Model path
     optional: true
-    type: path
-  model_name: 
-    description: Model name 
+    type: string
+  model_dir: 
+    description: Model dir 
     optional: true
     default: ""
-    type: string
+    type: path
   num_padding_at_beginning: 
     description: num_padding_at_beginning
     optional: false
@@ -137,8 +137,8 @@ launcher:
     mkdir -p ./step2_reward_model_finetuning/utils/ && cp -nr utils/* ./step2_reward_model_finetuning/utils  && cd ./step2_reward_model_finetuning &&  python main.py
       --data_path {inputs.data_path}
       --data_split {inputs.data_split}  
-      [--model_path {inputs.model_path} ]
-      [--model_name {inputs.model_name} ]
+      [--model_name_or_path {inputs.model_name_or_path}]
+      [--model_dir {inputs.model_dir} ]
       --num_padding_at_beginning {inputs.num_padding_at_beginning} 
       --per_device_train_batch_size {inputs.per_device_train_batch_size} 
       --per_device_eval_batch_size {inputs.per_device_eval_batch_size} 
