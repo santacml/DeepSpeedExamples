@@ -123,11 +123,11 @@ def main():
         # sft_lr = 1e-4
         
         sft_lora = 0
-        sft_e = 2
+        sft_e = 1
         sft_lr = 1e-6
 
         # rm_e = 5
-        rm_e = 2         # this is for the 3,3,4 rerun but also it should be 3 in general anyway. but originally it was 5
+        rm_e = 1
         rm_lr = 1e-5
         rm_lora = 0
         
