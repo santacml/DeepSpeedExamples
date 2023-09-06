@@ -75,6 +75,10 @@ def get_raw_dataset(dataset_name, output_path, seed, local_rank):
             )
         return raw_datasets.LocalJsonFileDataset(output_path, seed, local_rank,
                                                  dataset_name, chat_path)
+    elif os.path.exists(dataset_name):
+        print("Loading dataset as HF dataset from path...", dataset_name)
+        return raw_datasets.LocalHFDataset(output_path, seed,
+                                                  local_rank, dataset_name)
     else:
         raise RuntimeError(
             f"We do not have configs for dataset {dataset_name}, but you can add it by yourself in raw_datasets.py."

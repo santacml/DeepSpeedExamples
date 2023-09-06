@@ -7,6 +7,7 @@ import argparse
 import os
 import math
 import sys
+import shutil
 
 import torch
 from torch.utils.data import DataLoader, RandomSampler, SequentialSampler
@@ -25,9 +26,9 @@ from deepspeed.ops.adam import DeepSpeedCPUAdam, FusedAdam
 sys.path.append(
     os.path.abspath(os.path.join(os.path.dirname(__file__), os.path.pardir)))
 from utils.data.data_utils import create_prompt_dataset
-from utils.utils import print_rank_0, to_device, save_hf_format, set_random_seed, get_all_reduce_mean, get_optimizer_grouped_parameters, save_zero_three_model, load_hf_tokenizer
+from utils.utils import print_rank_0, to_device, save_hf_format, set_random_seed, get_all_reduce_mean, get_optimizer_grouped_parameters, save_zero_three_model, load_hf_tokenizer, AzureMLLogger
 from utils.ds_utils import get_train_ds_config
-from utils.module.lora import convert_linear_layer_to_lora, convert_lora_to_linear_layer, only_optimize_lora_parameters, make_model_gradient_checkpointing_compatible
+from utils.module.lora import convert_linear_layer_to_lora, convert_lora_to_linear_layer, only_optimize_lora_parameters, make_model_gradient_checkpointing_compatible, unfuse_lora_linear_layer
 from utils.model.model_utils import create_hf_model
 from utils.perf import print_throughput
 
@@ -66,7 +67,14 @@ def parse_args():
         type=str,
         help=
         "Path to pretrained model or model identifier from huggingface.co/models.",
-        required=True,
+        required=False,
+    )
+    parser.add_argument(
+        "--model_dir",
+        type=str,
+        help=
+        "Directory location of model (joined with model_name_or_path).",
+        required=False,
     )
     parser.add_argument(
         "--per_device_train_batch_size",
@@ -183,12 +191,27 @@ def parse_args():
     parser = deepspeed.add_config_arguments(parser)
     args = parser.parse_args()
 
+    if args.model_dir:
+        if args.model_name_or_path:
+            model_path = os.path.join(args.model_dir, args.model_name_or_path)
+            assert os.path.exists(model_path), f"model_path {model_path} does not exist"
+            args.model_name_or_path = model_path
+        else:
+            args.model_name_or_path = args.model_dir
+
     return args
 
 
 def main():
     args = parse_args()
+    
+    if "LOCAL_RANK" in os.environ:
+        local_rank = os.environ.get('LOCAL_RANK')
+        args.local_rank = int(local_rank)
+        print("My local rank is", args.local_rank)
 
+        torch.cuda.set_device(args.local_rank)
+    
     if args.local_rank == -1:
         device = torch.device("cuda")
     else:
@@ -199,6 +222,8 @@ def main():
         deepspeed.init_distributed()
 
     args.global_rank = torch.distributed.get_rank()
+
+    azureml_logger = AzureMLLogger(args)
 
     ds_config = get_train_ds_config(offload=args.offload,
                                     stage=args.zero_stage,
@@ -316,7 +341,11 @@ def main():
         args.global_rank)
     perplexity = evaluation(model, eval_dataloader)
     print_rank_0(f"ppl: {perplexity}", args.global_rank)
+    azureml_logger.log("val_ppl", float(perplexity))
 
+    global_step = 0
+    best_val_ppl = 1e10
+    best_val_ppl_epoch = 0
     for epoch in range(args.num_train_epochs):
         print_rank_0(
             f"Beginning of Epoch {epoch+1}/{args.num_train_epochs}, Total Micro Batches {len(train_dataloader)}",
@@ -338,6 +367,10 @@ def main():
             if torch.distributed.get_rank() == 0:
                 print_throughput(model.model, args, end - start,
                                  args.global_rank)
+            
+            azureml_logger.log("step", global_step)
+            azureml_logger.log("train_loss", float(loss))
+            global_step += 1
 
         # Evaluate perplexity on the validation set.
         print_rank_0(
@@ -346,6 +379,33 @@ def main():
         perplexity = evaluation(model, eval_dataloader)
         print_rank_0(f"ppl: {perplexity}", args.global_rank)
         model.tput_timer.update_epoch_count()
+        
+        azureml_logger.log("val_ppl", float(perplexity))
+
+        if perplexity < best_val_ppl:
+            best_val_ppl = perplexity
+            best_val_ppl_epoch = epoch
+
+            if args.output_dir is not None:
+                print_rank_0('Saving intermediate model ...', args.global_rank)
+                model = convert_lora_to_linear_layer(model)
+
+                if args.global_rank == 0:
+                    save_hf_format(model, tokenizer, args, sub_folder=str(epoch))
+
+                if args.zero_stage == 3:
+                    # For zero stage 3, each gpu only has a part of the model, so we need a special save function
+                    save_zero_three_model(model,
+                                        args.global_rank,
+                                        os.path.join(args.output_dir, str(epoch)),
+                                        zero_stage=args.zero_stage)
+
+                model = unfuse_lora_linear_layer(model)
+
+    if args.global_rank == 0:
+        print_rank_0(f"Copying best model... best model epoch is {best_val_ppl_epoch} with value {best_val_ppl}", args.global_rank)
+        best_model_dir = os.path.join(args.output_dir, str(best_val_ppl_epoch))
+        shutil.copytree(best_model_dir, args.output_dir, dirs_exist_ok=True)
 
     if args.output_dir is not None:
         print_rank_0('saving the final model ...', args.global_rank)

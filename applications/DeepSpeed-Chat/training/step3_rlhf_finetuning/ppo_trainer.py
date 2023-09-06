@@ -53,6 +53,7 @@ class DeepSpeedPPOTrainer():
         self.ref_model = self.rlhf_engine.ref
         self.reward_model = self.rlhf_engine.reward
         self.tokenizer = self.rlhf_engine.tokenizer
+        self.reward_tokenizer = self.rlhf_engine.reward_tokenizer
         self.args = args
         self.max_answer_seq_len = args.max_answer_seq_len
         self.end_of_conversation_token_id = self.tokenizer(
@@ -125,6 +126,7 @@ class DeepSpeedPPOTrainer():
 
         pad_token_id = self.tokenizer.pad_token_id
         attention_mask = seq.not_equal(pad_token_id).long()
+        
         with torch.no_grad():
             reward_score = self.reward_model.forward_value(
                 seq, attention_mask,
@@ -293,10 +295,10 @@ class DeepSpeedPPOTrainer():
         return advantages.detach(), returns
 
     def normalize_reward_critic(self, bias, scale):
-        reward_model = self.reward
+        reward_model = self.reward_model
         reward_model.set_bias_scale(bias, scale)
         
-        critic_model = self.critic
+        critic_model = self.critic_model
         critic_model.set_bias_scale(bias, scale)
 
     def _validate_training_mode(self):

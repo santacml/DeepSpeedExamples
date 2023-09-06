@@ -12,6 +12,21 @@ import deepspeed
 from deepspeed.runtime.zero.partition_parameters import ZeroParamStatus
 import torch.nn as nn
 
+class AzureMLLogger(object):
+    def __init__(self, args):
+        self.rank = args.global_rank
+        self.run = None
+
+        try:
+            from azureml.core.run import Run
+            azureml_run = Run.get_context()
+            self.run = azureml_run
+        except ImportError:
+            azureml_run = None
+    
+    def log(self, name, value):
+        if self.run is not None and self.rank == 0:
+            self.run.log(name, value, description=name)
 
 def print_rank_0(msg, rank=0):
     if rank <= 0:
@@ -65,11 +80,17 @@ def get_tokenizer(model_name_or_path, fast_tokenizer=True):
 def load_hf_tokenizer(model_name_or_path, fast_tokenizer=True):
     if os.path.exists(model_name_or_path):
         # Locally tokenizer loading has some issue, so we need to force download
-        model_json = os.path.join(model_name_or_path, "config.json")
-        if os.path.exists(model_json):
-            model_json_file = json.load(open(model_json))
-            model_name = model_json_file["_name_or_path"]
-            tokenizer = get_tokenizer(model_name,
+        try:
+            model_json = os.path.join(model_name_or_path, "config.json")
+            if os.path.exists(model_json):
+                model_json_file = json.load(open(model_json))
+                model_name = model_json_file["_name_or_path"]
+                tokenizer = get_tokenizer(model_name,
+                                        fast_tokenizer=fast_tokenizer)
+        except Exception as e:
+            print("Error loading tokenizer from remote, attempting local load...")
+            print(e)
+            tokenizer = get_tokenizer(model_name_or_path,
                                       fast_tokenizer=fast_tokenizer)
     else:
         tokenizer = get_tokenizer(model_name_or_path,
@@ -166,6 +187,13 @@ def load_state_dict_into_model(model_to_load=None,
     del state_dict
 
     return error_msgs
+
+
+def get_all_gather(tensor):
+    world = torch.distributed.get_world_size()
+    out = [torch.zeros(tensor.shape, dtype=tensor.dtype, device=tensor.device) for n in range(world)]
+    torch.distributed.all_gather(out, tensor)
+    return out
 
 
 def get_optimizer_grouped_parameters(
