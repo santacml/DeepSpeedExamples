@@ -94,7 +94,7 @@ def parse_args():
         type=str,
         help=
         "Path to pretrained model or model identifier from huggingface.co/models.",
-        required=True,
+        required=False,
     )
     parser.add_argument(
         "--actor_model_dir",
@@ -108,7 +108,7 @@ def parse_args():
         type=str,
         help=
         "Path to pretrained model or model identifier from huggingface.co/models.",
-        required=True,
+        required=False,
     )
     parser.add_argument(
         "--critic_model_dir",

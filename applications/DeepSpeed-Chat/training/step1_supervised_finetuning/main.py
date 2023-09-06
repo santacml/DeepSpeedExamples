@@ -67,7 +67,7 @@ def parse_args():
         type=str,
         help=
         "Path to pretrained model or model identifier from huggingface.co/models.",
-        required=True,
+        required=False,
     )
     parser.add_argument(
         "--model_dir",
