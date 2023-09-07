@@ -130,7 +130,6 @@ dmypy.json
 
 results/
 outputs/
-aml_ws_configs/
 
 .amltconfig
 .test_output
