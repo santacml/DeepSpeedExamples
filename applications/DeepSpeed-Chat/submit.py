@@ -184,19 +184,19 @@ def main():
 
     train_func = Component.from_yaml(
         ws,
-        yaml_file= Path(__file__).parent / "training" / "sft.yaml"
+        yaml_file= Path(__file__).parent / "examples" / "training" / "sft.yaml"
     )
 
 
     rm_train_func = Component.from_yaml(
         ws,
-        yaml_file= Path(__file__).parent / "training" / "rm.yaml"
+        yaml_file= Path(__file__).parent / "examples" / "training" / "rm.yaml"
     )
 
 
     ppo_func = Component.from_yaml(
         ws,
-        yaml_file= Path(__file__).parent / "training" / "ppo.yaml"
+        yaml_file= Path(__file__).parent / "examples" / "training" / "ppo.yaml"
     )
 
 
