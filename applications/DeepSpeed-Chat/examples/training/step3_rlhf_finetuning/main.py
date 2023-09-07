@@ -557,12 +557,6 @@ def main():
         # Initializes the distributed backend which will take care of sychronizing nodes/GPUs
         deepspeed.init_distributed()
 
-    assert args.actor_model_path or args.actor_model_name
-    args.actor_model_name_or_path = args.actor_model_path if args.actor_model_path else args.actor_model_name
-
-    assert args.critic_model_path or args.critic_model_name
-    args.critic_model_name_or_path = args.critic_model_path if args.critic_model_path else args.critic_model_name
-
     args.global_rank = torch.distributed.get_rank()
 
     azureml_logger = AzureMLLogger(args)
@@ -800,7 +794,7 @@ def main():
                 save_zero_three_model(
                     rlhf_engine.actor_ema,
                     global_rank=args.global_rank,
-                    save_dir=os.path.join(args.output_dir, 'actor_ema'),zero_stage=args.actor_zero_stage
+                    save_dir=os.path.join(args.output_dir, 'actor_ema'), zero_stage=args.actor_zero_stage
                 )
         if args.critic_zero_stage == 3:
             save_zero_three_model(
