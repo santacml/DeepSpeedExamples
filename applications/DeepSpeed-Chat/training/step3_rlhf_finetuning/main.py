@@ -40,8 +40,9 @@ sys.path.append(
     os.path.abspath(os.path.join(os.path.dirname(__file__), os.path.pardir)))
 from utils.data.data_utils import create_prompt_dataset, MiniDataset, DataCollatorRLHF, get_unsupervised_data
 from utils.utils import print_rank_0, to_device, save_hf_format, set_random_seed, get_all_reduce_mean, moving_average, save_zero_three_model, load_hf_tokenizer, get_all_gather, AzureMLLogger
-from utils.module.lora import convert_lora_to_linear_layer
+from utils.module.lora import convert_lora_to_linear_layer, unfuse_lora_linear_layer
 from utils.perf import print_throughput_step3
+import shutil
 
 writer = None
 
@@ -147,6 +148,16 @@ def parse_args():
         type=int,
         default=1,
         help="For generated data, how many ppo training epochs to run.")
+    parser.add_argument(
+        "--save_interval",
+        type=int,
+        default=150,
+        help="During PPO, save after this many steps regardless of performance. Set to 0 for no interval saving.")
+    parser.add_argument(
+        "--save_improvement_percent",
+        type=float,
+        default=.06,
+        help="During PPO, save if performance has improved by this percentage since the last save. Set to 0 for no improvement saving.")
     parser.add_argument("--max_prompt_seq_len",
                         type=int,
                         default=256,
@@ -522,15 +533,6 @@ def main():
     # load_hf_tokenizer will get the correct tokenizer and set padding tokens based on the model family
     tokenizer = load_hf_tokenizer(args.actor_model_name_or_path,
                                   fast_tokenizer=True)
-    reward_tokenizer = load_hf_tokenizer(args.critic_model_name_or_path,
-                                            fast_tokenizer=True)
-    tokenizer_tokens = set(tokenizer.get_vocab().keys())
-    reward_tokenizer_tokens = set(reward_tokenizer.get_vocab().keys())
-
-    if tokenizer_tokens.isdisjoint(reward_tokenizer_tokens):
-        print_rank_0("Using different tokenizers for actor/reference and critic/reward model pairs.", args.global_rank)
-    else:
-        reward_tokenizer = None
         
     prompt_train_dataloader, unsupervised_train_dataloader, num_total_iters = create_datasets(
         args=args, tokenizer=tokenizer, train_phase=3)
@@ -540,7 +542,6 @@ def main():
         actor_model_name_or_path=args.actor_model_name_or_path,
         critic_model_name_or_path=args.critic_model_name_or_path,
         tokenizer=tokenizer,
-        reward_tokenizer=reward_tokenizer,
         num_total_iters=num_total_iters,
         args=args)
 
@@ -576,7 +577,11 @@ def main():
     print_rank_0("***** Running training *****", args.global_rank)
 
     non_overflow_step_count = 0
-
+    
+    global_step = 0
+    last_rewards = []
+    best_ave_last_rewards = 0
+    best_ave_last_rewards_step = 0
     for epoch in range(args.num_train_epochs):
         print_rank_0(
             f"Beginning of Epoch {epoch+1}/{args.num_train_epochs}, Total Generation Batches {min(len(prompt_train_dataloader), len(unsupervised_train_dataloader))}",
@@ -660,8 +665,7 @@ def main():
                     "-------------------------------------------------------------------------------------",
                     args.global_rank)
 
-                if args.enable_tensorboard and torch.distributed.get_rank(
-                ) == 0:
+                if args.enable_tensorboard and torch.distributed.get_rank() == 0:
                     writer.add_scalar('reward',
                                       average_reward / inner_iter,
                                       global_step=step)
@@ -679,6 +683,28 @@ def main():
                                       global_step=step)
                     writer.flush()
 
+                global_step += 1
+                last_rewards.append(float(average_reward/inner_iter))
+                if len(last_rewards) > 10:
+                    last_rewards.pop(0)
+                    check_reward = sum(last_rewards) / len(last_rewards)
+
+                    save_model = False
+                    if (args.save_interval > 0 and global_step % args.save_interval == 0) or best_ave_last_rewards == 0:
+                        save_model = True
+                    elif args.save_improvement_percent > 0:
+                        improvement = (check_reward - best_ave_last_rewards) / abs(best_ave_last_rewards)
+                        save_model = improvement >= args.save_improvement_percent
+
+                    if save_model:
+                        print_rank_0(f"Previous best reward {check_reward}", args.global_rank)
+                        print_rank_0(f"Saving new best model at step {step} with ave reward {best_ave_last_rewards}", args.global_rank)
+
+                        best_ave_last_rewards = check_reward
+                        best_ave_last_rewards_step = step
+
+                        rlhf_engine.save_models(str(step))
+
             if args.actor_gradient_checkpointing:
                 rlhf_engine.actor.gradient_checkpointing_disable()
 
@@ -694,46 +720,18 @@ def main():
             break
 
     if args.output_dir is not None:
-        print_rank_0('saving model ...')
-        rlhf_engine.actor = convert_lora_to_linear_layer(rlhf_engine.actor)
-        rlhf_engine.critic = convert_lora_to_linear_layer(rlhf_engine.critic)
-        if args.enable_ema:
-            rlhf_engine.actor_ema = convert_lora_to_linear_layer(
-                rlhf_engine.actor_ema)
+        rlhf_engine.save_models("end")
+        
 
-        if torch.distributed.get_rank() == 0:
-            save_hf_format(rlhf_engine.actor,
-                           tokenizer,
-                           args,
-                           sub_folder='actor')
-            save_hf_format(rlhf_engine.critic,
-                           tokenizer if reward_tokenizer is None else reward_tokenizer,
-                           args,
-                           sub_folder='critic')
-            if args.enable_ema:
-                save_hf_format(rlhf_engine.actor_ema,
-                               tokenizer,
-                               args,
-                               sub_folder='actor_ema')
+        if args.global_rank == 0:
+            print(f"Copying best models... best model step is {best_ave_last_rewards_step} with value {best_ave_last_rewards}")
+            best_actor_dir_step = os.path.join(args.output_dir, os.path.join('actor', str(best_ave_last_rewards_step)))
+            best_actor_dir = os.path.join(args.output_dir, os.path.join('actor', "best"))
+            shutil.copytree(best_actor_dir_step, best_actor_dir)
 
-        if args.actor_zero_stage == 3:
-            save_zero_three_model(rlhf_engine.actor,
-                                  global_rank=args.global_rank,
-                                  save_dir=os.path.join(
-                                      args.output_dir, 'actor'),
-                                  zero_stage=args.actor_zero_stage)
-            if args.enable_ema:
-                save_zero_three_model(rlhf_engine.actor_ema,
-                                      global_rank=args.global_rank,
-                                      save_dir=os.path.join(
-                                          args.output_dir, 'actor_ema'),
-                                      zero_stage=args.actor_zero_stage)
-        if args.critic_zero_stage == 3:
-            save_zero_three_model(rlhf_engine.critic,
-                                  global_rank=args.global_rank,
-                                  save_dir=os.path.join(
-                                      args.output_dir, 'critic'),
-                                  zero_stage=args.critic_zero_stage)
+            best_critic_dir_step = os.path.join(args.output_dir, os.path.join('critic', str(best_ave_last_rewards)))
+            best_critic_dir = os.path.join(args.output_dir, os.path.join('critic', "best"))
+            shutil.copytree(best_critic_dir_step, best_critic_dir)
 
 
 if __name__ == "__main__":

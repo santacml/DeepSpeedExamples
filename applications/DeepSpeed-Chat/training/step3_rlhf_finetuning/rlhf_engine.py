@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 # DeepSpeed Team
+import os
 import time
 import torch
 import deepspeed
@@ -12,7 +13,8 @@ from transformers import AutoModelForCausalLM, get_scheduler
 from utils.ds_utils import get_train_ds_config, get_eval_ds_config
 from utils.module.lora import convert_linear_layer_to_lora, only_optimize_lora_parameters, make_model_gradient_checkpointing_compatible
 from utils.model.model_utils import create_hf_model, create_critic_model
-from utils.utils import get_optimizer_grouped_parameters
+from utils.utils import get_optimizer_grouped_parameters, save_hf_format, save_zero_three_model
+from utils.module.lora import convert_lora_to_linear_layer, unfuse_lora_linear_layer
 """
 TODOs:
   * support HF models for critic (for debugging), must be a previously saved ckpt from step-2
@@ -40,11 +42,10 @@ def log_init(model_name, stime=None):
 class DeepSpeedRLHFEngine():
 
     def __init__(self, actor_model_name_or_path, critic_model_name_or_path,
-                 tokenizer, reward_tokenizer, args, num_total_iters):
+                 tokenizer, args, num_total_iters):
         self.args = args
         self.num_total_iters = num_total_iters
         self.tokenizer = tokenizer
-        self.reward_tokenizer = reward_tokenizer 
 
         self.actor = self._init_actor(
             actor_model_name_or_path=actor_model_name_or_path)
@@ -215,7 +216,7 @@ class DeepSpeedRLHFEngine():
         # Model
         critic_model = create_critic_model(
             model_name_or_path=critic_model_name_or_path,
-            tokenizer=self.tokenizer if self.reward_tokenizer is None else self.reward_tokenizer,
+            tokenizer=self.tokenizer,
             ds_config=ds_eval_config,
             num_padding_at_beginning=self.args.num_padding_at_beginning,
             rlhf_training=True,
@@ -286,7 +287,7 @@ class DeepSpeedRLHFEngine():
         # Model
         reward_model = create_critic_model(
             model_name_or_path=critic_model_name_or_path,
-            tokenizer=self.tokenizer if self.reward_tokenizer is None else self.reward_tokenizer,
+            tokenizer=self.tokenizer,
             ds_config=ds_eval_config,
             num_padding_at_beginning=self.args.num_padding_at_beginning,
             rlhf_training=True,
@@ -298,3 +299,53 @@ class DeepSpeedRLHFEngine():
 
         log_init("Reward", stime=stime)
         return reward_engine
+
+    def save_models(self, add_path=""):
+        if self.args.output_dir is not None:
+            self.actor = convert_lora_to_linear_layer(self.actor)
+            self.critic = convert_lora_to_linear_layer(self.critic)
+            if self.args.enable_ema:
+                self.actor_ema = convert_lora_to_linear_layer(
+                    self.actor_ema)
+
+            if torch.distributed.get_rank() == 0:
+                save_hf_format(self.actor,
+                            self.tokenizer,
+                            self.args,
+                            sub_folder=os.path.join('actor', add_path))
+                save_hf_format(self.critic,
+                            self.tokenizer,
+                            self.args,
+                            sub_folder=os.path.join('critic', add_path))
+                if self.args.enable_ema:
+                    save_hf_format(self.actor_ema,
+                                self.tokenizer,
+                                self.args,
+                                sub_folder=os.path.join('actor_ema', add_path))
+
+            if self.args.actor_zero_stage == 3:
+                save_zero_three_model(self.actor,
+                                    global_rank=self.args.global_rank,
+                                    save_dir=os.path.join(
+                                        self.args.output_dir, 'actor', add_path),
+                                    zero_stage=self.args.actor_zero_stage)
+                if self.args.enable_ema:
+                    save_zero_three_model(self.actor_ema,
+                                        global_rank=self.args.global_rank,
+                                        save_dir=os.path.join(
+                                            self.args.output_dir, 'actor_ema', add_path),
+                                        zero_stage=self.args.actor_zero_stage)
+            if self.args.critic_zero_stage == 3:
+                save_zero_three_model(self.critic,
+                                    global_rank=self.args.global_rank,
+                                    save_dir=os.path.join(
+                                        self.args.output_dir, 'critic', add_path),
+                                    zero_stage=self.args.critic_zero_stage)
+                
+            
+            print("Unfusing...")
+            self.actor = unfuse_lora_linear_layer(self.actor)
+            self.critic = unfuse_lora_linear_layer(self.critic)
+            if self.args.enable_ema:
+                self.actor_ema = unfuse_lora_linear_layer(
+                    self.actor_ema)

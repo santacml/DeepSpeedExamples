@@ -242,6 +242,7 @@ launcher:
       --disable_actor_dropout
       --only_optimize_lora
       --deepspeed 
+      --print_answers
       [--inference_tp_size {inputs.inference_tp_size}]
       [--tp_gather_partition_size {inputs.tp_gather_partition_size}]
       [--exact_reward_function {inputs.exact_reward_function}]

@@ -62,7 +62,7 @@ def get_info(cluster):
 def main():
     # model = "opt_1.3b"
     model = "llama_2_7b"
-    TASK = "Dahoas/rm-static"
+    TASK = "stack_exchange"
 
 
     
@@ -103,13 +103,18 @@ def main():
 
 
 
-    if TASK == "Dahoas/rm-static":
+    if TASK == "stack_exchange":
         # default_compute_target, ws, ds, process_count_per_node = get_info("tscience")
         
         default_compute_target, ws, ds, process_count_per_node = get_info("tscience-2")
         instance_count = 2
 
         all_datasets_path =  "Dahoas/rm-static"
+
+        rm_model_weights_input = Dataset.File.from_files(path=[(ds, "misantac_oss_rlhf_v2/logs-2023-09-06-102444/rm")],validate=True).as_mount()
+
+        sft_model_weights_input = Dataset.File.from_files(path=[(ds, "misantac_oss_rlhf_v2/logs-2023-09-06-221108/sft")],validate=True).as_mount()
+        
         
 
         per_device_train_batch_size = 2
@@ -158,6 +163,8 @@ def main():
     elif model == "llama_2_7b":
         model_weights = None
         num_padding_at_beginning = 0
+
+        
 
         model_dir = Dataset.File.from_files(path=[(ds, "llama-2/Llama-2-7b-hf/")],validate=True).as_mount()
         # model_dir = Dataset.File.from_files(path=[(ds, "llama-2/")],validate=True).as_mount()
@@ -328,8 +335,6 @@ def main():
                 critic_lora_dim=128,
                 critic_lora_module_name=lora_module_name,
 
-
-                # save_strategy="reward"
             )
 
             ppo.runsettings.resource_layout.configure(instance_count=ppo_instance_count, process_count_per_node=process_count_per_node)
