@@ -42,32 +42,42 @@ inputs:
     default: "2,4,4"
     type: string
   actor_model_name_or_path: 
-    description: Actor model name or path
-    optional: false
+    description: Model path
+    optional: true
+    type: string
+  actor_model_dir: 
+    description: Model dir 
+    optional: true
+    default: ""
     type: path
   critic_model_name_or_path: 
-    description: Critic model name or path
-    optional: false
+    description: Model path
+    optional: true
+    type: string
+  critic_model_dir: 
+    description: Model dir 
+    optional: true
+    default: ""
     type: path
   num_padding_at_beginning: 
     description: num_padding_at_beginning
     optional: false
     default: 1
     type: int
-  per_device_train_batch_size: 
-    description: per_device_train_batch_size
+  per_device_generation_batch_size:
+    description: per_device_generation_batch_size
     optional: false
     default: 4
     type: int
-  per_device_mini_train_batch_size: 
-    description: per_device_mini_train_batch_size
+  per_device_training_batch_size: 
+    description: per_device_training_batch_size
     optional: false
     default: 4
     type: int
-  generation_batch_numbers: 
-    description: generation_batch_numbers
+  generation_batches: 
+    description: generation_batches
     optional: false
-    default: 1
+    default: 4
     type: int
   ppo_epochs: 
     description: ppo_epochs
@@ -93,16 +103,6 @@ inputs:
     description: critic_learning_rate
     optional: false
     default:  1e-4
-    type: float
-  kl_ctl:
-    description: kl_ctl
-    optional: true
-    default:  0.02
-    type: float
-  critic_loss_mult:
-    description: critic_loss_mult
-    optional: true
-    default:  1
     type: float
   actor_weight_decay: 
     description: actor_weight_decay
@@ -167,11 +167,6 @@ inputs:
     optional: false
     default: "decoder.layers."
     type: string
-  multilora_mode:
-    description: Use 'actor', 'critic' or 'actor,critic'
-    optional: false
-    default: ""
-    type: string
   inference_tp_size: 
     description: inference_tp_size
     optional: true
@@ -183,11 +178,6 @@ inputs:
     optional: true
     default: 4
     type: int
-  save_strategy: 
-    description: Use 'reward' or leave blank for saving at end
-    optional: true
-    default: ""
-    type: string
   combined_mode: 
     description: Use combined actor/critic
     optional: true
@@ -228,12 +218,14 @@ launcher:
       [--data_path {inputs.data_path} ]
       [--data_names {inputs.data_names} ]
       --data_split {inputs.data_split}  
-      --actor_model_name_or_path {inputs.actor_model_name_or_path} 
-      --critic_model_name_or_path {inputs.critic_model_name_or_path} 
+      [--actor_model_name_or_path {inputs.actor_model_name_or_path}]
+      [--actor_model_dir {inputs.actor_model_dir} ]
+      [--critic_model_name_or_path {inputs.critic_model_name_or_path}]
+      [ {inputs.critic_model_dir} ]
       --num_padding_at_beginning {inputs.num_padding_at_beginning} 
-      --per_device_train_batch_size {inputs.per_device_train_batch_size} 
-      --per_device_mini_train_batch_size {inputs.per_device_mini_train_batch_size} 
-      --generation_batch_numbers {inputs.generation_batch_numbers}
+      --per_device_generation_batch_size {inputs.per_device_generation_batch_size}
+      --per_device_training_batch_size {inputs.per_device_training_batch_size} 
+      --generation_batches {inputs.generation_batches} 
       --ppo_epochs {inputs.ppo_epochs}   
       --max_answer_seq_len {inputs.max_answer_seq_len}  
       --max_prompt_seq_len {inputs.max_prompt_seq_len}  
@@ -252,10 +244,6 @@ launcher:
       --actor_lora_module_name {inputs.actor_lora_module_name} 
       --critic_lora_dim {inputs.critic_lora_dim} 
       --critic_lora_module_name {inputs.critic_lora_module_name} 
-      --multilora_mode {inputs.multilora_mode}
-      [--combined_mode {inputs.combined_mode}]
-      [--kl_ctl {inputs.kl_ctl}]
-      [--critic_loss_mult {inputs.critic_loss_mult}]
       [--stop_token {inputs.stop_token}]
       [--normalize_rm_scale {inputs.normalize_rm_scale}]
       --disable_actor_dropout
@@ -263,11 +251,11 @@ launcher:
       --deepspeed 
       [--inference_tp_size {inputs.inference_tp_size}]
       [--tp_gather_partition_size {inputs.tp_gather_partition_size}]
-      [--save_strategy {inputs.save_strategy}]
       [--exact_reward_function {inputs.exact_reward_function}]
       --output_dir {outputs.output_dir} 
 
 # --enable_hybrid_engine 
+  # [--save_strategy {inputs.save_strategy}]
 
 
 #  --actor_gradient_checkpointing \

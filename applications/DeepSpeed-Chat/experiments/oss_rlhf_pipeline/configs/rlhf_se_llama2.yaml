@@ -21,7 +21,7 @@ datasets:
 
 models:
   model_size: "7B"
-  base_model_path: "llama/llama_7b_easylm_to_hf_conversion/"
+  base_model_path: "llama-2/Llama-2-7b-hf/"
 
 outputs:
   output_dir: oss_rlhf

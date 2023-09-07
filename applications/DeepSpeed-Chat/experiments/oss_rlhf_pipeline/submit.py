@@ -37,7 +37,7 @@ def main(config):
     ################################################
     # Load base model(s)
     ################################################
-    base_model_path = Dataset.File.from_files(path=[(datastore, config.models.base_model_path)], validate=True).as_mount()
+    model_dir = Dataset.File.from_files(path=[(datastore, config.models.base_model_path)], validate=True).as_mount()
 
     ################################################
     # Load components
@@ -68,8 +68,8 @@ def main(config):
                 data_names=None,
                 data_path=data_sft_train,
                 data_split="4,2,4",
-                model_name=None,
-                model_path=base_model_path,
+                model_dir=model_dir,
+                model_name_or_path="",
                 per_device_train_batch_size=1,
                 per_device_eval_batch_size=2,
                 max_seq_len=400 + 400,
@@ -102,8 +102,8 @@ def main(config):
                 data_names=None,
                 data_path=data_rm_train,
                 data_split="2,4,4",
-                model_name=None,
-                model_path=base_model_path,
+                model_name_or_path="",
+                model_dir=model_dir,
                 per_device_train_batch_size=1,
                 per_device_eval_batch_size=2,
                 max_seq_len=400 + 400,
@@ -137,12 +137,14 @@ def main(config):
                 data_names=None,
                 data_path=data_ppo_train,
                 data_split="2,4,4",
-                actor_model_name_or_path=sft_model_path,
-                critic_model_name_or_path=rm_model_path,
+                actor_model_dir=sft_model_path,
+                actor_model_name_or_path=None,
+                critic_model_dir=rm_model_path,
+                critic_model_name_or_path=None,
                 num_padding_at_beginning=0,
-                per_device_train_batch_size=1,
-                per_device_mini_train_batch_size=3,
-                generation_batch_numbers=1,
+                per_device_generation_batch_size=1,
+                per_device_training_batch_size=3,
+                generation_batches=1,
                 ppo_epochs=1,
                 max_answer_seq_len=400,
                 max_prompt_seq_len=400,

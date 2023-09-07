@@ -41,7 +41,8 @@ jobs:
     - deepspeed ./examples/deepspeed_chat/training/step1_supervised_finetuning/main.py
       --data_path=/mnt/data/misantac_oss_rlhf/stackllama_md_processed/stackllama_md_filtered_processed_150000/
       --data_split="4,2,4"
-      --model_path=/mnt/data/llama/llama_7b_easylm_to_hf_conversion/
+      --model_name_or_path="Llama-2-7b-hf"
+      --model_dir=/mnt/data/llama-2/
       --per_device_train_batch_size=1
       --per_device_eval_batch_size=2
       --max_seq_len=800
@@ -69,7 +70,8 @@ jobs:
     - deepspeed ./examples/deepspeed_chat/training/step2_reward_model_finetuning/main.py
       --data_path=/mnt/data/misantac_oss_rlhf/stackllama_md_processed/stackllama_md_filtered_processed_150000/
       --data_split="2,4,4"
-      --model_path=/mnt/data/llama/llama_7b_easylm_to_hf_conversion/
+      --model_name_or_path="Llama-2-7b-hf"
+      --model_dir=/mnt/data/llama-2/
       --per_device_train_batch_size=1
       --per_device_eval_batch_size=2
       --max_seq_len=800
@@ -98,11 +100,13 @@ jobs:
     - deepspeed --master_port 12346 ./examples/deepspeed_chat/training/step3_rlhf_finetuning/main.py
       --data_path=/mnt/data/misantac_oss_rlhf/stackllama_md_processed/stackllama_md_filtered_processed_150000/
       --data_split="2,4,4"
-      --actor_model_name_or_path=/mnt/data/misantac_oss_rlhf/logs-2023-08-02-171401/sft
-      --critic_model_name_or_path=/mnt/data/misantac_oss_rlhf/logs-2023-07-11-104249/rm
+      --actor_model_dir=/mnt/data/misantac_oss_rlhf/logs-2023-08-02-171401/
+      --actor_model_name_or_path=sft
+      --critic_model_dir=/mnt/data/misantac_oss_rlhf/logs-2023-07-11-104249/
+      --critic_model_name_or_path=rm
       --num_padding_at_beginning=0
-      --per_device_train_batch_size=1
-      --per_device_mini_train_batch_size=3
+      --per_device_generation_batch_size=1
+      --per_device_training_batch_size=3
       --generation_batch_numbers=1
       --ppo_epochs=1
       --max_answer_seq_len=400
@@ -122,12 +126,10 @@ jobs:
       --actor_lora_module_name="layers"
       --critic_lora_dim=128
       --critic_lora_module_name="layers"
-      --multilora_mode="none"
       --normalize_rm_scale=1.0
       --disable_actor_dropout
       --only_optimize_lora
-      --deepspeed 
-      --save_strategy="reward"
+      --deepspeed
       --output_dir=/mnt/data/hydra-rlhf/rl
     sla_tier: premium
     priority: high

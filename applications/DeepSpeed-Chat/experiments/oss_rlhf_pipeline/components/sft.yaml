@@ -4,16 +4,6 @@ description: "RLHF Supervised Finetuning"
 display_name: RLHF Supervised Finetuning
 environment:
   docker: 
-    # image: b5476ead59e14b909c1c0afdc3422078.azurecr.io/megatron-deepspeed-moe
-    # image: babeleusrefere459829475348.azurecr.io/megatron-deepspeed-moe
-
-    # image: mcr.microsoft.com/azureml/openmpi3.1.2-cuda10.2-cudnn8-ubuntu18.04
-  #   image: mcr.microsoft.com/azureml/curated/acpt-pytorch-1.11-py38-cuda11.5-gpu
-
-
-    # image: mcr.microsoft.com/azureml/curated/acpt-pytorch-1.13-py38-cuda11.7-gpu
-
-
     image: pytorch/pytorch:2.0.1-cuda11.7-cudnn8-devel
     # image: nvcr.io/nvidia/pytorch:23.05-py3
   conda:
@@ -59,15 +49,15 @@ inputs:
     optional: false
     default: "2,4,4"
     type: string
-  model_path: 
+  model_name_or_path: 
     description: Model path
     optional: true
-    type: path
-  model_name: 
-    description: Model name 
+    type: string
+  model_dir: 
+    description: Model dir 
     optional: true
     default: ""
-    type: string
+    type: path
   per_device_train_batch_size: 
     description: per_device_train_batch_size
     optional: false
@@ -157,8 +147,8 @@ launcher:
       [--data_names {inputs.data_names} ]
       [--sft_only_data_path {inputs.sft_only_data_path}] 
       --data_split {inputs.data_split}  
-      [--model_path {inputs.model_path} ]
-      [--model_name {inputs.model_name} ]
+      [--model_name_or_path {inputs.model_name_or_path}]
+      [--model_dir {inputs.model_dir} ]
       --per_device_train_batch_size {inputs.per_device_train_batch_size} 
       --per_device_eval_batch_size {inputs.per_device_eval_batch_size} 
       --max_seq_len {inputs.max_seq_len}  
