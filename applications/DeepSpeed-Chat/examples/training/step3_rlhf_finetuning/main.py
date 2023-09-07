@@ -46,6 +46,7 @@ from deepspeed_chat.utils.utils import (
     moving_average,
     save_zero_three_model,
     load_hf_tokenizer,
+    get_all_gather,
     AzureMLLogger
 )
 from deepspeed_chat.utils.module.lora import convert_lora_to_linear_layer

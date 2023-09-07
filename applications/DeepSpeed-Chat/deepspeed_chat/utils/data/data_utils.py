@@ -20,57 +20,41 @@ from deepspeed_chat.utils.data import raw_datasets
 def get_raw_dataset(dataset_name, output_path, seed, local_rank):
 
     if "Dahoas/rm-static" in dataset_name:
-        return raw_datasets.DahoasRmstaticDataset(output_path, seed,
-                                                  local_rank, dataset_name)
+        return raw_datasets.DahoasRmstaticDataset(output_path, seed, local_rank, dataset_name)
     elif "Dahoas/full-hh-rlhf" in dataset_name:
-        return raw_datasets.DahoasFullhhrlhfDataset(output_path, seed,
-                                                    local_rank, dataset_name)
+        return raw_datasets.DahoasFullhhrlhfDataset(output_path, seed, local_rank, dataset_name)
     elif "Dahoas/synthetic-instruct-gptj-pairwise" in dataset_name:
-        return raw_datasets.DahoasSyntheticinstructgptjpairwiseDataset(
-            output_path, seed, local_rank, dataset_name)
+        return raw_datasets.DahoasSyntheticinstructgptjpairwiseDataset(output_path, seed, local_rank, dataset_name)
     elif "yitingxie/rlhf-reward-datasets" in dataset_name:
-        return raw_datasets.YitingxieRlhfrewarddatasetsDataset(
-            output_path, seed, local_rank, dataset_name)
+        return raw_datasets.YitingxieRlhfrewarddatasetsDataset(output_path, seed, local_rank, dataset_name)
     elif "openai/webgpt_comparisons" in dataset_name:
-        return raw_datasets.OpenaiWebgptcomparisonsDataset(
-            output_path, seed, local_rank, dataset_name)
+        return raw_datasets.OpenaiWebgptcomparisonsDataset(output_path, seed, local_rank, dataset_name)
     elif "stanfordnlp/SHP" in dataset_name:
-        return raw_datasets.StanfordnlpSHPDataset(output_path, seed,
-                                                  local_rank, dataset_name)
+        return raw_datasets.StanfordnlpSHPDataset(output_path, seed, local_rank, dataset_name)
     elif "pvduy/sharegpt_alpaca_oa_vicuna_format" in dataset_name:
-        return raw_datasets.PvduySharegptalpacaoavicunaformatDataset(
-            output_path, seed, local_rank, dataset_name)
+        return raw_datasets.PvduySharegptalpacaoavicunaformatDataset(output_path, seed, local_rank, dataset_name)
     elif "wangrui6/Zhihu-KOL" in dataset_name:
-        return raw_datasets.Wangrui6ZhihuKOLDataset(output_path, seed,
-                                                    local_rank, dataset_name)
+        return raw_datasets.Wangrui6ZhihuKOLDataset(output_path, seed, local_rank, dataset_name)
     elif "Cohere/miracl-zh-queries-22-12" in dataset_name:
-        return raw_datasets.CohereMiraclzhqueries2212Dataset(
-            output_path, seed, local_rank, dataset_name)
+        return raw_datasets.CohereMiraclzhqueries2212Dataset(output_path, seed, local_rank, dataset_name)
     elif "Hello-SimpleAI/HC3-Chinese" in dataset_name:
-        return raw_datasets.HelloSimpleAIHC3ChineseDataset(
-            output_path, seed, local_rank, dataset_name)
+        return raw_datasets.HelloSimpleAIHC3ChineseDataset(output_path, seed, local_rank, dataset_name)
     elif "mkqa-Chinese" in dataset_name:
-        return raw_datasets.MkqaChineseDataset(output_path, seed, local_rank,
-                                               "mkqa")
+        return raw_datasets.MkqaChineseDataset(output_path, seed, local_rank, "mkqa")
     elif "mkqa-Japanese" in dataset_name:
-        return raw_datasets.MkqaJapaneseDataset(output_path, seed, local_rank,
-                                                "mkqa")
+        return raw_datasets.MkqaJapaneseDataset(output_path, seed, local_rank, "mkqa")
     elif "Cohere/miracl-ja-queries-22-12" in dataset_name:
-        return raw_datasets.CohereMiracljaqueries2212Dataset(
-            output_path, seed, local_rank, dataset_name)
+        return raw_datasets.CohereMiracljaqueries2212Dataset(output_path, seed, local_rank, dataset_name)
     elif "lmqg/qg_jaquad" in dataset_name:
-        return raw_datasets.LmqgQgjaquadDataset(output_path, seed, local_rank,
-                                                dataset_name)
+        return raw_datasets.LmqgQgjaquadDataset(output_path, seed, local_rank, dataset_name)
     elif "lmqg/qag_jaquad" in dataset_name:
-        return raw_datasets.LmqgQagjaquadDataset(output_path, seed, local_rank,
-                                                 dataset_name)
+        return raw_datasets.LmqgQagjaquadDataset(output_path, seed, local_rank, dataset_name)
     elif "local/jsonfile" in dataset_name:
         chat_path = os.path.abspath(
-            os.path.join(os.path.dirname(__file__), os.path.pardir,
-                         os.path.pardir, os.path.pardir))
+            os.path.join(os.path.dirname(__file__), os.path.pardir, os.path.pardir, os.path.pardir))
         if not (os.path.isfile(chat_path + '/data/train.json') and os.path.isfile(chat_path + '/data/eval.json')):
             raise RuntimeError(
-                f"Please check both the train.json and eval.json files in your applications/DeepSpeed-Chat/data directory."
+                "Please check both the train.json and eval.json files in your applications/DeepSpeed-Chat/data directory."
             )
         return raw_datasets.LocalJsonFileDataset(output_path, seed, local_rank, dataset_name, chat_path)
     elif os.path.exists(dataset_name):
