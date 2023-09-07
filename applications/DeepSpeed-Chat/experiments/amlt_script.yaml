@@ -1,4 +1,4 @@
-description: Hydra-RLHF for Causal-LMs
+description: DeepspeedChat - RLHF for Causal-LMs
 
 target:
   service: aml
@@ -36,27 +36,98 @@ jobs:
   - name: rlhf-sft
     sku: 80G8-A100
     command:
-    - pip install -e .[all] 
+    - pip install -e .
     - export PATH=/home/$$(whoami)/.local/bin:$${PATH}
-    - deepspeed ./examples/training/step1_supervised_finetuning/main.py
-      --data_path /mnt/data/misantac_oss_rlhf/stackllama_md_processed/stackllama_md_filtered_processed_150000/
-      --data_split 2,4,4
-      --model_name_or_path /mnt/data/llama/llama_7b_easylm_to_hf_conversion/
-      --per_device_train_batch_size 4
-      --per_device_eval_batch_size 4
-      --max_seq_len 512
-      --learning_rate 9.65e-6
-      --weight_decay 0
-      --num_train_epochs 4
-      --gradient_accumulation_steps 1
-      --lr_scheduler_type "cosine"
-      --num_warmup_steps 0
-      --seed 1234
-      --gradient_checkpointing
-      --zero_stage 3
+    - deepspeed ./examples/deepspeed_chat/training/step1_supervised_finetuning/main.py
+      --data_path=/mnt/data/misantac_oss_rlhf/stackllama_md_processed/stackllama_md_filtered_processed_150000/
+      --data_split="4,2,4"
+      --model_path=/mnt/data/llama/llama_7b_easylm_to_hf_conversion/
+      --per_device_train_batch_size=1
+      --per_device_eval_batch_size=2
+      --max_seq_len=800
+      --learning_rate=5e-7
+      --weight_decay=.1
+      --num_train_epochs=5
+      --gradient_accumulation_steps=3
+      --lr_scheduler_type=cosine
+      --num_warmup_steps=0
+      --seed=42
+      --zero_stage=1
+      --lora_dim=0
+      --lora_module_name=layers
       --deepspeed
-      --lora_dim 128
-      --lora_module_name "layers."
-      --output_dir=/mnt/data/deepspeed-chat/sft
+      --only_optimize_lora
+      --output_dir=/mnt/data/hydra-rlhf/sft
+    sla_tier: premium
+    priority: high
+
+  - name: rlhf-rm
+    sku: 80G8-A100
+    command:
+    - pip install -e .
+    - export PATH=/home/$$(whoami)/.local/bin:$${PATH}
+    - deepspeed ./examples/deepspeed_chat/training/step2_reward_model_finetuning/main.py
+      --data_path=/mnt/data/misantac_oss_rlhf/stackllama_md_processed/stackllama_md_filtered_processed_150000/
+      --data_split="2,4,4"
+      --model_path=/mnt/data/llama/llama_7b_easylm_to_hf_conversion/
+      --per_device_train_batch_size=1
+      --per_device_eval_batch_size=2
+      --max_seq_len=800
+      --num_padding_at_beginning=0
+      --learning_rate=1e-6
+      --weight_decay=.1
+      --num_train_epochs=3
+      --gradient_accumulation_steps=12
+      --lr_scheduler_type=cosine
+      --num_warmup_steps=0
+      --seed=42
+      --zero_stage=1
+      --lora_dim=0
+      --lora_module_name=layers
+      --deepspeed
+      --only_optimize_lora
+      --output_dir=/mnt/data/hydra-rlhf/rm
+    sla_tier: premium
+    priority: high
+
+  - name: rlhf-rl
+    sku: 80G8-A100
+    command:
+    - pip install -e .
+    - export PATH=/home/$$(whoami)/.local/bin:$${PATH}
+    - deepspeed --master_port 12346 ./examples/deepspeed_chat/training/step3_rlhf_finetuning/main.py
+      --data_path=/mnt/data/misantac_oss_rlhf/stackllama_md_processed/stackllama_md_filtered_processed_150000/
+      --data_split="2,4,4"
+      --actor_model_name_or_path=/mnt/data/misantac_oss_rlhf/logs-2023-08-02-171401/sft
+      --critic_model_name_or_path=/mnt/data/misantac_oss_rlhf/logs-2023-07-11-104249/rm
+      --num_padding_at_beginning=0
+      --per_device_train_batch_size=1
+      --per_device_mini_train_batch_size=3
+      --generation_batch_numbers=1
+      --ppo_epochs=1
+      --max_answer_seq_len=400
+      --max_prompt_seq_len=400
+      --actor_learning_rate=5e-4
+      --critic_learning_rate=5e-4
+      --actor_weight_decay=0
+      --critic_weight_decay=0
+      --num_train_epochs=1
+      --gradient_accumulation_steps=25
+      --lr_scheduler_type="cosine"
+      --num_warmup_steps=100
+      --seed=42
+      --actor_zero_stage=1
+      --critic_zero_stage=1
+      --actor_lora_dim=128
+      --actor_lora_module_name="layers"
+      --critic_lora_dim=128
+      --critic_lora_module_name="layers"
+      --multilora_mode="none"
+      --normalize_rm_scale=1.0
+      --disable_actor_dropout
+      --only_optimize_lora
+      --deepspeed 
+      --save_strategy="reward"
+      --output_dir=/mnt/data/hydra-rlhf/rl
     sla_tier: premium
     priority: high

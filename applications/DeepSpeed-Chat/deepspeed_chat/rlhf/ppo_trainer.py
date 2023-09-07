@@ -10,7 +10,6 @@ import time
 import deepspeed
 from deepspeed.runtime.zero.partition_parameters import ZeroParamStatus
 
-
 from deepspeed_chat.utils.utils import print_rank_0
 
 
@@ -26,11 +25,11 @@ def get_model_norm(model):
     with torch.no_grad():
         total = 0.0
         for param in model.parameters():
-            should_gather = hasattr(
+            should_gather = hasattr(param, 'ds_id') and param.ds_status == ZeroParamStatus.NOT_AVAILABLE
+            with deepspeed.zero.GatheredParameters(
                 param,
-                'ds_id') and param.ds_status == ZeroParamStatus.NOT_AVAILABLE
-            with deepspeed.zero.GatheredParameters(param,
-                                                   enabled=should_gather):
+                enabled=should_gather
+            ):
                 total += float(param.float().norm())
 
     return total
@@ -43,7 +42,7 @@ def gather_log_probs(logits, labels):
 
 
 class DeepSpeedPPOTrainer():
-
+    
     def __init__(self, rlhf_engine, args):
         self.rlhf_engine = rlhf_engine
         self.actor_model = self.rlhf_engine.actor
@@ -54,8 +53,7 @@ class DeepSpeedPPOTrainer():
         self.reward_tokenizer = self.rlhf_engine.reward_tokenizer
         self.args = args
         self.max_answer_seq_len = args.max_answer_seq_len
-        self.end_of_conversation_token_id = self.tokenizer(
-            args.end_of_conversation_token)['input_ids'][-1]
+        self.end_of_conversation_token_id = self.tokenizer(args.end_of_conversation_token)['input_ids'][-1]
         self.z3_enabled = args.actor_zero_stage == 3
 
         # Those value can be changed
@@ -106,8 +104,7 @@ class DeepSpeedPPOTrainer():
 
         out_seq = []
         for i in range(batch_size):
-            if valid_ans_len[
-                    i] <= 1:  # if the answer is shorter than 1 token, drop it
+            if valid_ans_len[i] <= 1:  # if the answer is shorter than 1 token, drop it
                 continue
             else:
                 out_seq.append(seq[i:i + 1])
@@ -115,7 +112,7 @@ class DeepSpeedPPOTrainer():
 
         return out_seq
 
-    def generate_experience(self, prompts, mask, step):
+    def generate_experience(self, prompts, mask, step, reward_only=False):
         self.eval()
         generate_start = time.time()
         seq = self._generate_sequence(prompts, mask, step)
@@ -124,35 +121,38 @@ class DeepSpeedPPOTrainer():
 
         pad_token_id = self.tokenizer.pad_token_id
         attention_mask = seq.not_equal(pad_token_id).long()
-        
-        with torch.no_grad():
-            output = self.actor_model(seq, attention_mask=attention_mask)
-            output_ref = self.ref_model(seq, attention_mask=attention_mask)
-            reward_score = self.reward_model.forward_value(
-                seq, attention_mask,
-                prompt_length=self.prompt_length)['chosen_end_scores'].detach(
-                )
-            values = self.critic_model.forward_value(
-                seq, attention_mask, return_value_only=True).detach()[:, :-1]
 
-        logits = output.logits
-        logits_ref = output_ref.logits
+        with torch.no_grad():
+            reward_score = self.reward_model.forward_value(seq, attention_mask, prompt_length=self.prompt_length)['chosen_end_scores'].detach()
+
+            output_ref = None
+            output = None
+            values = None
+            if not reward_only:
+                output_ref = self.ref_model(seq, attention_mask=attention_mask)
+                output = self.actor_model(seq, attention_mask=attention_mask)
+                values = self.critic_model.forward_value(
+                    seq, attention_mask, return_value_only=True).detach()[:, :-1]
+
+        logprobs = None
+        logprobs_ref = None
+        if not reward_only:
+            logprobs = gather_log_probs(output.logits[:, :-1, :], seq[:, 1:])
+            logprobs_ref = gather_log_probs(output_ref.logits[:, :-1, :], seq[:, 1:])
 
         self.generate_time = generate_end - generate_start
 
         return {
             'prompts': prompts,
-            'logprobs': gather_log_probs(logits[:, :-1, :], seq[:, 1:]),
-            'ref_logprobs': gather_log_probs(logits_ref[:, :-1, :], seq[:,
-                                                                        1:]),
+            'logprobs': logprobs,
+            'ref_logprobs': logprobs_ref,
             'value': values,
             'rewards': reward_score,
             'input_ids': seq,
             "attention_mask": attention_mask
         }
 
-    def compute_rewards(self, prompts, log_probs, ref_log_probs, reward_score,
-                        action_mask):
+    def compute_rewards(self, prompts, log_probs, ref_log_probs, reward_score, action_mask):
 
         kl_divergence_estimate = -self.kl_ctl * (log_probs - ref_log_probs)
         rewards = kl_divergence_estimate
@@ -182,9 +182,7 @@ class DeepSpeedPPOTrainer():
 
         old_values = values
         with torch.no_grad():
-            old_rewards = self.compute_rewards(prompts, log_probs,
-                                               ref_log_probs, reward_score,
-                                               action_mask)
+            old_rewards = self.compute_rewards(prompts, log_probs, ref_log_probs, reward_score, action_mask)
             ends = start + action_mask[:, start:].sum(1) + 1
             # we need to zero out the reward and value after the end of the conversation
             # otherwise the advantage/return will be wrong
@@ -198,43 +196,43 @@ class DeepSpeedPPOTrainer():
         batch = {'input_ids': seq, "attention_mask": attention_mask}
         actor_prob = self.actor_model(**batch, use_cache=False).logits
         actor_log_prob = gather_log_probs(actor_prob[:, :-1, :], seq[:, 1:])
-        actor_loss = self.actor_loss_fn(actor_log_prob[:, start:],
-                                        log_probs[:, start:], advantages,
-                                        action_mask[:, start:])
+        actor_loss = self.actor_loss_fn(
+            actor_log_prob[:, start:],
+            log_probs[:, start:],
+            advantages,
+            action_mask[:, start:]
+        )
         self.actor_model.backward(actor_loss)
 
         if not self.args.align_overflow:
             self.actor_model.step()
 
-        value = self.critic_model.forward_value(**batch,
-                                                return_value_only=True,
-                                                use_cache=False)[:, :-1]
-        critic_loss = self.critic_loss_fn(value[:, start:], old_values[:,
-                                                                       start:],
-                                          returns, action_mask[:, start:])
+        value = self.critic_model.forward_value(**batch, return_value_only=True, use_cache=False)[:, :-1]
+        critic_loss = self.critic_loss_fn(value[:, start:], old_values[:, start:], returns, action_mask[:, start:])
         self.critic_model.backward(critic_loss)
 
         if self.args.align_overflow:
-            actor_overflow = self.actor_model.optimizer.check_overflow(
-                external=True)
-            critic_overflow = self.critic_model.optimizer.check_overflow(
-                external=True)
+            actor_overflow = self.actor_model.optimizer.check_overflow(external=True)
+            critic_overflow = self.critic_model.optimizer.check_overflow(external=True)
 
             rank = torch.distributed.get_rank()
             if actor_overflow and not critic_overflow:
                 self.critic_model.optimizer.skip_step = True
                 print_rank_0(
                     "OVERFLOW: actor overflow, skipping both actor and critic steps",
-                    rank)
+                    rank
+                )
             elif not actor_overflow and critic_overflow:
                 self.actor_model.optimizer.skip_step = True
                 print_rank_0(
                     "OVERFLOW: critic overflow, skipping both actor and critic steps",
-                    rank)
+                    rank
+                )
             elif actor_overflow and critic_overflow:
                 print_rank_0(
                     "OVERFLOW: actor and critic overflow, skipping both actor and critic steps",
-                    rank)
+                    rank
+                )
             self.actor_model.step()
 
         self.critic_model.step()
@@ -252,8 +250,7 @@ class DeepSpeedPPOTrainer():
         log_ratio = (logprobs - old_logprobs) * mask
         ratio = torch.exp(log_ratio)
         pg_loss1 = -advantages * ratio
-        pg_loss2 = -advantages * torch.clamp(ratio, 1.0 - self.cliprange,
-                                             1.0 + self.cliprange)
+        pg_loss2 = -advantages * torch.clamp(ratio, 1.0 - self.cliprange, 1.0 + self.cliprange)
         pg_loss = torch.sum(torch.max(pg_loss1, pg_loss2) * mask) / mask.sum()
         return pg_loss
 
@@ -284,6 +281,13 @@ class DeepSpeedPPOTrainer():
         returns = advantages + values[:, start:]
         return advantages.detach(), returns
 
+    def normalize_reward_critic(self, bias, scale):
+        reward_model = self.reward_model
+        reward_model.set_bias_scale(bias, scale)
+
+        critic_model = self.critic_model
+        critic_model.set_bias_scale(bias, scale)
+
     def _validate_training_mode(self):
         assert self.actor_model.module.training
         assert self.critic_model.module.training
@@ -309,14 +313,10 @@ class DeepSpeedPPOTrainer():
         ref_model_norm = get_model_norm(self.ref_model)
         critic_model_norm = get_model_norm(self.critic_model)
         reward_model_norm = get_model_norm(self.reward_model)
-        print_all_ranks(f'{tag} global_actor_model_norm', actor_model_norm,
-                        self.args.local_rank)
-        print_all_ranks(f'{tag} global_ref_model_norm', ref_model_norm,
-                        self.args.local_rank)
-        print_all_ranks(f'{tag} global_critic_model_norm', critic_model_norm,
-                        self.args.local_rank)
-        print_all_ranks(f'{tag} global_reward_model_norm', reward_model_norm,
-                        self.args.local_rank)
+        print_all_ranks(f'{tag} global_actor_model_norm', actor_model_norm, self.args.local_rank)
+        print_all_ranks(f'{tag} global_ref_model_norm', ref_model_norm, self.args.local_rank)
+        print_all_ranks(f'{tag} global_critic_model_norm', critic_model_norm, self.args.local_rank)
+        print_all_ranks(f'{tag} global_reward_model_norm', reward_model_norm, self.args.local_rank)
 
 
 class DeepSpeedPPOTrainerUnsupervised(DeepSpeedPPOTrainer):

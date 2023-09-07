@@ -37,7 +37,17 @@ from ppo_trainer import DeepSpeedPPOTrainer, DeepSpeedPPOTrainerUnsupervised
 from rlhf_engine import DeepSpeedRLHFEngine
 
 from deepspeed_chat.utils.data.data_utils import create_prompt_dataset, MiniDataset, DataCollatorRLHF, get_unsupervised_data
-from deepspeed_chat.utils.utils import print_rank_0, to_device, save_hf_format, set_random_seed, get_all_reduce_mean, moving_average, save_zero_three_model, load_hf_tokenizer, AzureMLLogger
+from deepspeed_chat.utils.utils import (
+    print_rank_0,
+    to_device,
+    save_hf_format,
+    set_random_seed,
+    get_all_reduce_mean,
+    moving_average,
+    save_zero_three_model,
+    load_hf_tokenizer,
+    AzureMLLogger
+)
 from deepspeed_chat.utils.module.lora import convert_lora_to_linear_layer
 from deepspeed_chat.utils.perf import print_throughput_step3
 
@@ -46,15 +56,13 @@ writer = None
 
 def parse_args():
     global writer
-    parser = argparse.ArgumentParser(
-        description="(Step 3) RLHF training arguments")
+    parser = argparse.ArgumentParser(description="(Step 3) RLHF training arguments")
 
     parser.add_argument(
         '--data_path',
         nargs='*',
         default=['Dahoas/rm-static'],
-        help=
-        'Path to the training dataset. Accepted format: 1) a single data path, 2) multiple datasets in the form: dataset1-path dataset2-path ...'
+        help='Path to the training dataset. Accepted format: 1) a single data path, 2) multiple datasets in the form: dataset1-path dataset2-path ...'
     )
     parser.add_argument(
         '--data_split',
@@ -68,8 +76,7 @@ def parse_args():
         '--data_output_path',
         type=str,
         default='/tmp/data_files',
-        help=
-        'Where to store the data-related files such as shuffle index. This needs to be on a local storage of a node (not on a shared storage)'
+        help='Where to store the data-related files such as shuffle index. This needs to be on a local storage of a node (not on a shared storage)'
     )
     parser.add_argument(
         "--unsupervised_dataset_name",
@@ -80,79 +87,80 @@ def parse_args():
         "--unsupervised_dataset_config_name",
         type=str,
         default=None,
-        help=
-        "The configuration name of the dataset to use (via the datasets library)."
+        help="The configuration name of the dataset to use (via the datasets library)."
     )
-    parser.add_argument("--unsup_coef",
-                        type=float,
-                        default=27.8,
-                        help='''gamma in Equation 2 from InstructGPT paper''')
     parser.add_argument(
-        "--actor_model_name",
+        "--unsup_coef",
+        type=float,
+        default=27.8,
+        help='''gamma in Equation 2 from InstructGPT paper'''
+    )
+    parser.add_argument(
+        "--actor_model_name_or_path",
         type=str,
-        help=
-        "Model identifier from huggingface.co/models.",
+        help="Path to pretrained model or model identifier from huggingface.co/models.",
         required=False,
     )
     parser.add_argument(
-        "--actor_model_path",
+        "--actor_model_dir",
         type=str,
-        help=
-        "Path to pretrained model.",
+        help="Directory location of model (joined with model_name_or_path).",
         required=False,
     )
     parser.add_argument(
-        "--critic_model_name",
+        "--critic_model_name_or_path",
         type=str,
-        help=
-        "Model identifier from huggingface.co/models.",
+        help="Path to pretrained model or model identifier from huggingface.co/models.",
         required=False,
     )
     parser.add_argument(
-        "--critic_model_path",
+        "--critic_model_dir",
         type=str,
-        help=
-        "Path to pretrained model.",
+        help="Directory location of model (joined with model_name_or_path).",
         required=False,
     )
     parser.add_argument(
         "--num_padding_at_beginning",
         type=int,
         default=1,
-        help=
-        "OPT model has a fixed number (1) of padding tokens at the beginning of the input. We did not see this in other models but keep it as an option for now."
+        help="OPT model has a fixed number (1) of padding tokens at the beginning of the input. We did not see this in other models but keep it as an option for now."
     )
     parser.add_argument(
         "--per_device_generation_batch_size",
         type=int,
         default=16,
-        help=
-        "Batch size (per device) for the training dataloader and generation purpose."
+        help="Batch size (per device) for the training dataloader and generation purpose."
     )
     parser.add_argument(
         "--per_device_training_batch_size",
         type=int,
         default=16,
-        help=
-        "Mini Batch size (per device) for the training dataloader and training purpose."
+        help="Mini Batch size (per device) for the training dataloader and training purpose."
     )
-    parser.add_argument("--generation_batches",
-                        type=int,
-                        default=1,
-                        help="Generate x batches to go to training mode.")
+    parser.add_argument(
+        "--generation_batches",
+        type=int,
+        default=1,
+        help="Generate x batches to go to training mode."
+    )
     parser.add_argument(
         "--ppo_epochs",
         type=int,
         default=1,
-        help="For generated data, how many ppo training epochs to run.")
-    parser.add_argument("--max_prompt_seq_len",
-                        type=int,
-                        default=256,
-                        help="The maximum sequence length.")
-    parser.add_argument("--max_answer_seq_len",
-                        type=int,
-                        default=256,
-                        help="The maximum sequence length.")
+        help="For generated data, how many ppo training epochs to run."
+    )
+    parser.add_argument(
+        "--max_prompt_seq_len",
+        type=int,
+        default=256,
+        help="The maximum sequence length."
+    )
+    parser.add_argument(
+        "--max_answer_seq_len",
+        type=int,
+        default=256,
+        help="The maximum sequence length."
+    )
     parser.add_argument(
         "--actor_learning_rate",
         type=float,
@@ -165,18 +173,24 @@ def parse_args():
         default=5e-6,
         help="Initial learning rate (after the potential warmup period) to use."
     )
-    parser.add_argument("--actor_weight_decay",
-                        type=float,
-                        default=0.,
-                        help="Weight decay to use.")
-    parser.add_argument("--critic_weight_decay",
-                        type=float,
-                        default=0.,
-                        help="Weight decay to use.")
-    parser.add_argument("--num_train_epochs",
-                        type=int,
-                        default=1,
-                        help="Total number of training epochs to perform.")
+    parser.add_argument(
+        "--actor_weight_decay",
+        type=float,
+        default=0.,
+        help="Weight decay to use."
+    )
+    parser.add_argument(
+        "--critic_weight_decay",
+        type=float,
+        default=0.,
+        help="Weight decay to use."
+    )
+    parser.add_argument(
+        "--num_train_epochs",
+        type=int,
+        default=1,
+        help="Total number of training epochs to perform."
+    )
     parser.add_argument(
         "--lr_scheduler_type",
         type=SchedulerType,
@@ -191,169 +205,212 @@ def parse_args():
         "--gradient_accumulation_steps",
         type=int,
         default=1,
-        help="Number of steps for the warmup in the lr scheduler.")
+        help="Number of steps for the warmup in the lr scheduler."
+    )
     parser.add_argument(
         "--num_warmup_steps",
         type=int,
         default=100,
-        help="Number of steps for the warmup in the lr scheduler.")
-    parser.add_argument("--normalize_rm_scale",
-                        type=float,
-                        default=0,
-                        help="If this value is nonzero, the Reward Model will be normalized to this scale before PPO begins.")
-    parser.add_argument("--normalize_rm_samples",
-                        type=float,
-                        default=200,
-                        help="If RM normalization is enabled, use this many samples of the training data to normalize it..")
-    parser.add_argument("--output_dir",
-                        type=str,
-                        default=None,
-                        help="Where to store the model.")
-    parser.add_argument("--seed",
-                        type=int,
-                        default=None,
-                        help="A seed for reproducible training.")
+        help="Number of steps for the warmup in the lr scheduler."
+    )
+    parser.add_argument(
+        "--normalize_rm_scale",
+        type=float,
+        default=0,
+        help="If this value is nonzero, the Reward Model will be normalized to this scale before PPO begins."
+    )
+    parser.add_argument(
+        "--normalize_rm_samples",
+        type=float,
+        default=200,
+        help="If RM normalization is enabled, use this many samples of the training data to normalize it.."
+    )
+    parser.add_argument(
+        "--output_dir",
+        type=str,
+        default=None,
+        help="Where to store the model."
+    )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=None,
+        help="A seed for reproducible training."
+    )
     parser.add_argument(
         "--preprocessing_num_workers",
         type=int,
         default=None,
         help="The number of processes to use for the preprocessing.",
     )
-    parser.add_argument("--local_rank",
-                        type=int,
-                        default=-1,
-                        help="local_rank for distributed training on gpus")
+    parser.add_argument(
+        "--local_rank",
+        type=int,
+        default=-1,
+        help="local_rank for distributed training on gpus"
+    )
 
     # DeepSpeed
     parser.add_argument(
         "--enable_hybrid_engine",
         action='store_true',
-        help=
-        "Enable hybrid engine for actor model to optimize both inference and training through DeepSpeed."
+        help="Enable hybrid engine for actor model to optimize both inference and training through DeepSpeed."
     )
     parser.add_argument(
         "--unpin_actor_parameters",
         action='store_true',
-        help=
-        "Unpin actor's parameters during generation. This makes generation slower but requires less memory."
+        help="Unpin actor's parameters during generation. This makes generation slower but requires less memory."
     )
     parser.add_argument(
         "--release_inference_cache",
         action='store_true',
-        help=
-        "Release the memory cache used for inference. This makes generation preparation slower but might increase e2e throughput by using larger batch size."
+        help="Release the memory cache used for inference. This makes generation preparation slower but might increase e2e throughput by using larger batch size."
     )
     parser.add_argument(
         "--inference_tp_size",
         type=int,
         default=1,
-        help=
-        "Tensor-parallelism degree used for the inference-optimization. Please note hybrid-engine need to be enabled when using this feature."
+        help="Tensor-parallelism degree used for the inference-optimization. Please note hybrid-engine need to be enabled when using this feature."
     )
     parser.add_argument(
         "--tp_gather_partition_size",
         type=int,
         default=8,
-        help=
-        "Granularity to bring in layers for TP sharding inside the hybrid engine. Please note hybrid-engine and tp_inference_size > 1 need to be true when using this feature."
+        help="Granularity to bring in layers for TP sharding inside the hybrid engine. Please note hybrid-engine and tp_inference_size > 1 need to be true when using this feature."
     )
-    parser.add_argument('--offload',
-                        action='store_true',
-                        help='Enable ZeRO Offload techniques.')
+    parser.add_argument(
+        '--offload',
+        action='store_true',
+        help='Enable ZeRO Offload techniques.'
+    )
     parser.add_argument(
         '--offload_reference_model',
         action='store_true',
-        help='Enable ZeRO Offload techniques for reference model')
+        help='Enable ZeRO Offload techniques for reference model'
+    )
     parser.add_argument(
         '--actor_zero_stage',
         type=int,
         default=0,
-        help='ZeRO optimization stage for Actor model (and clones).')
+        help='ZeRO optimization stage for Actor model (and clones).'
+    )
     parser.add_argument(
         '--critic_zero_stage',
         type=int,
         default=0,
-        help='ZeRO optimization stage for Critic model (and reward).')
+        help='ZeRO optimization stage for Critic model (and reward).'
+    )
     parser.add_argument(
         '--actor_gradient_checkpointing',
         action='store_true',
-        help='Enable HF gradient checkpointing for Actor model.')
+        help='Enable HF gradient checkpointing for Actor model.'
+    )
     parser.add_argument(
         '--critic_gradient_checkpointing',
         action='store_true',
-        help='Enable HF gradient checkpointing for Critic model.')
-    parser.add_argument('--disable_actor_dropout',
-                        action='store_true',
-                        help='Disable the dropout of the actor model.')
-    parser.add_argument('--disable_critic_dropout',
-                        action='store_true',
-                        help='Disable the dropout of the critical model.')
-    ## LoRA for efficient training setting
-    parser.add_argument("--actor_lora_dim",
-                        type=int,
-                        default=0,
-                        help="If > 0, use LoRA for efficient training.")
-    parser.add_argument("--actor_lora_module_name",
-                        type=str,
-                        default="decoder.layers.",
-                        help="The scope of LoRA.")
-    parser.add_argument("--critic_lora_dim",
-                        type=int,
-                        default=0,
-                        help="If > 0, use LoRA for efficient training.")
-    parser.add_argument("--critic_lora_module_name",
-                        type=str,
-                        default="decoder.layers.",
-                        help="The scope of LoRA.")
-    parser.add_argument('--only_optimize_lora',
-                        action='store_true',
-                        help='Only optimize the LoRA parameters.')
+        help='Enable HF gradient checkpointing for Critic model.'
+    )
+    parser.add_argument(
+        '--disable_actor_dropout',
+        action='store_true',
+        help='Disable the dropout of the actor model.'
+    )
+    parser.add_argument(
+        '--disable_critic_dropout',
+        action='store_true',
+        help='Disable the dropout of the critical model.'
+    )
+
+    # LoRA for efficient training setting
+    parser.add_argument(
+        "--actor_lora_dim",
+        type=int,
+        default=0,
+        help="If > 0, use LoRA for efficient training."
+    )
+    parser.add_argument(
+        "--actor_lora_module_name",
+        type=str,
+        default="decoder.layers.",
+        help="The scope of LoRA."
+    )
+    parser.add_argument(
+        "--critic_lora_dim",
+        type=int,
+        default=0,
+        help="If > 0, use LoRA for efficient training."
+    )
+    parser.add_argument(
+        "--critic_lora_module_name",
+        type=str,
+        default="decoder.layers.",
+        help="The scope of LoRA."
+    )
+    parser.add_argument(
+        '--only_optimize_lora',
+        action='store_true',
+        help='Only optimize the LoRA parameters.'
+    )
     parser.add_argument(
         "--actor_lora_learning_rate",
         type=float,
         default=5e-4,
-        help=
-        "Initial actor LoRA learning rate (after the potential warmup period) to use."
+        help="Initial actor LoRA learning rate (after the potential warmup period) to use."
     )
     parser.add_argument(
         "--critic_lora_learning_rate",
         type=float,
         default=5e-4,
-        help=
-        "Initial critic LoRA learning rate (after the potential warmup period) to use."
+        help="Initial critic LoRA learning rate (after the potential warmup period) to use."
     )
-    ## Make EMA as an optional feature
-    parser.add_argument('--enable_ema',
-                        action='store_true',
-                        help='Enable EMA checkpoint for the model.')
-    ## Mixed Precision ZeRO++
+
+    # Make EMA as an optional feature
+    parser.add_argument(
+        '--enable_ema',
+        action='store_true',
+        help='Enable EMA checkpoint for the model.'
+    )
+
+    # Mixed Precision ZeRO++
     parser.add_argument(
         '--enable_mixed_precision_lora',
         action='store_true',
-        help='Enable Mixed Precision ZeRO++ for training and generation.')
-    ## Tensorboard logging
-    parser.add_argument('--enable_tensorboard',
-                        action='store_true',
-                        help='Enable tensorboard logging')
-    parser.add_argument('--tensorboard_path',
-                        type=str,
-                        default="step3_tensorboard")
-    ## Actor/critic model overflow alignment
+        help='Enable Mixed Precision ZeRO++ for training and generation.'
+    )
+
+    # Tensorboard logging
+    parser.add_argument(
+        '--enable_tensorboard',
+        action='store_true',
+        help='Enable tensorboard logging'
+    )
+    parser.add_argument(
+        '--tensorboard_path',
+        type=str,
+        default="step3_tensorboard"
+    )
+
+    # Actor/critic model overflow alignment
     parser.add_argument(
         '--align_overflow',
         action='store_true',
-        help='Align loss scale overflow between actor and critic')
-    ## Print actor model answers during training
-    parser.add_argument('--print_answers',
-                        action='store_true',
-                        help='Print prompt and answers during training')
-    ## Testing
+        help='Align loss scale overflow between actor and critic'
+    )
+
+    # Print actor model answers during training
+    parser.add_argument(
+        '--print_answers',
+        action='store_true',
+        help='Print prompt and answers during training'
+    )
+
+    # Testing
     parser.add_argument(
         '--enable_test_mode',
         action='store_true',
-        help=
-        'Enable a testing mode that terminates training based on args.test_stop_step'
+        help='Enable a testing mode that terminates training based on args.test_stop_step'
     )
+
     parser.add_argument(
         "--test_stop_step",
         type=int,
@@ -382,6 +439,22 @@ def parse_args():
         raise ValueError(
             "The combination of [actor_zero_stage==2, critic_zero_stage==2, enable_hybrid_engine=True, offload=True, lora=False] is currently unsupported due to training instability!"
         )
+
+    if args.actor_model_dir:
+        if args.actor_model_name_or_path:
+            actor_model_path = os.path.join(args.actor_model_dir, args.actor_model_name_or_path)
+            assert os.path.exists(actor_model_path), f"model_path {actor_model_path} does not exist"
+            args.actor_model_name_or_path = actor_model_path
+        else:
+            args.actor_model_name_or_path = args.actor_model_dir
+
+    if args.critic_model_dir:
+        if args.critic_model_name_or_path:
+            critic_model_path = os.path.join(args.critic_model_dir, args.critic_model_name_or_path)
+            assert os.path.exists(critic_model_path), f"model_path {critic_model_path} does not exist"
+            args.critic_model_name_or_path = critic_model_path
+        else:
+            args.critic_model_name_or_path = args.critic_model_dir
 
     return args
 
@@ -468,7 +541,7 @@ def evaluation_reward_normalization(args, trainer, prompt_train_dataloader, devi
 
 def main():
     args = parse_args()
-    
+
     if "LOCAL_RANK" in os.environ:
         local_rank = os.environ.get('LOCAL_RANK')
         args.local_rank = int(local_rank)
@@ -485,10 +558,10 @@ def main():
         deepspeed.init_distributed()
 
     assert args.actor_model_path or args.actor_model_name
-    args.actor_model_name_or_path = args.actor_model_path if args.actor_model_path  else args.actor_model_name
+    args.actor_model_name_or_path = args.actor_model_path if args.actor_model_path else args.actor_model_name
 
     assert args.critic_model_path or args.critic_model_name
-    args.critic_model_name_or_path = args.critic_model_path if args.critic_model_path  else args.critic_model_name
+    args.critic_model_name_or_path = args.critic_model_path if args.critic_model_path else args.critic_model_name
 
     args.global_rank = torch.distributed.get_rank()
 
@@ -506,10 +579,14 @@ def main():
     torch.distributed.barrier()
 
     # load_hf_tokenizer will get the correct tokenizer and set padding tokens based on the model family
-    tokenizer = load_hf_tokenizer(args.actor_model_name_or_path,
-                                  fast_tokenizer=True)
-    reward_tokenizer = load_hf_tokenizer(args.critic_model_name_or_path,
-                                            fast_tokenizer=True)
+    tokenizer = load_hf_tokenizer(
+        args.actor_model_name_or_path,
+        fast_tokenizer=True
+    )
+    reward_tokenizer = load_hf_tokenizer(
+        args.critic_model_name_or_path,
+        fast_tokenizer=True
+    )
     tokenizer_tokens = set(tokenizer.get_vocab().keys())
     reward_tokenizer_tokens = set(reward_tokenizer.get_vocab().keys())
 
@@ -517,7 +594,7 @@ def main():
         print_rank_0("Using different tokenizers for actor/reference and critic/reward model pairs.", args.global_rank)
     else:
         reward_tokenizer = None
-        
+
     prompt_train_dataloader, unsupervised_train_dataloader, num_total_iters = create_datasets(
         args=args, tokenizer=tokenizer, train_phase=3)
 
@@ -528,7 +605,8 @@ def main():
         tokenizer=tokenizer,
         reward_tokenizer=reward_tokenizer,
         num_total_iters=num_total_iters,
-        args=args)
+        args=args
+    )
 
     # Mixed Precision ZeRO++
     if args.enable_mixed_precision_lora:
@@ -541,22 +619,27 @@ def main():
 
     ppo_trainer = DeepSpeedPPOTrainerUnsupervised if unsupervised_training_enabled else DeepSpeedPPOTrainer
     trainer = ppo_trainer(rlhf_engine, args)
-    
-    if args.normalize_rm_scale > 0 :
+
+    if args.normalize_rm_scale > 0:
         print_rank_0("***** Running RM Normalization*****", args.global_rank)
         bias, scale = evaluation_reward_normalization(args, trainer, prompt_train_dataloader, device)
 
         print_rank_0("Calculated stats for rm normalization...", args.global_rank)
         print_rank_0(f"bias {bias}", args.global_rank)
         print_rank_0(f"scale {scale}", args.global_rank)
- 
-        rlhf_engine.normalize_reward_critic(bias, scale)
+
+        trainer.normalize_reward_critic(bias, scale)
 
     # first number is how many experience-batch to generate, second number is the training batch size, which is the micro-batch size used
-    exp_mini_dataset = MiniDataset(args.generation_batches,
-                                   args.per_device_training_batch_size)
-    unsup_mini_dataset = MiniDataset(args.generation_batches,
-                                     args.per_device_training_batch_size)
+    exp_mini_dataset = MiniDataset(
+        args.generation_batches,
+        args.per_device_training_batch_size
+    )
+
+    unsup_mini_dataset = MiniDataset(
+        args.generation_batches,
+        args.per_device_training_batch_size
+    )
 
     # Train!
     print_rank_0("***** Running training *****", args.global_rank)
@@ -688,38 +771,43 @@ def main():
                 rlhf_engine.actor_ema)
 
         if torch.distributed.get_rank() == 0:
-            save_hf_format(rlhf_engine.actor,
-                           tokenizer,
-                           args,
-                           sub_folder='actor')
-            save_hf_format(rlhf_engine.critic,
-                           tokenizer if reward_tokenizer is None else reward_tokenizer,
-                           args,
-                           sub_folder='critic')
+            save_hf_format(
+                rlhf_engine.actor,
+                tokenizer,
+                args,
+                sub_folder='actor'
+            )
+            save_hf_format(
+                rlhf_engine.critic,
+                tokenizer if reward_tokenizer is None else reward_tokenizer,
+                args,
+                sub_folder='critic'
+            )
             if args.enable_ema:
-                save_hf_format(rlhf_engine.actor_ema,
-                               tokenizer,
-                               args,
-                               sub_folder='actor_ema')
+                save_hf_format(
+                    rlhf_engine.actor_ema,
+                    tokenizer,
+                    args,
+                    sub_folder='actor_ema'
+                )
 
         if args.actor_zero_stage == 3:
-            save_zero_three_model(rlhf_engine.actor,
-                                  global_rank=args.global_rank,
-                                  save_dir=os.path.join(
-                                      args.output_dir, 'actor'),
-                                  zero_stage=args.actor_zero_stage)
+            save_zero_three_model(
+                rlhf_engine.actor,
+                global_rank=args.global_rank,
+                save_dir=os.path.join(args.output_dir, 'actor'), zero_stage=args.actor_zero_stage)
             if args.enable_ema:
-                save_zero_three_model(rlhf_engine.actor_ema,
-                                      global_rank=args.global_rank,
-                                      save_dir=os.path.join(
-                                          args.output_dir, 'actor_ema'),
-                                      zero_stage=args.actor_zero_stage)
+                save_zero_three_model(
+                    rlhf_engine.actor_ema,
+                    global_rank=args.global_rank,
+                    save_dir=os.path.join(args.output_dir, 'actor_ema'),zero_stage=args.actor_zero_stage
+                )
         if args.critic_zero_stage == 3:
-            save_zero_three_model(rlhf_engine.critic,
-                                  global_rank=args.global_rank,
-                                  save_dir=os.path.join(
-                                      args.output_dir, 'critic'),
-                                  zero_stage=args.critic_zero_stage)
+            save_zero_three_model(
+                rlhf_engine.critic,
+                global_rank=args.global_rank,
+                save_dir=os.path.join(args.output_dir, 'critic'), zero_stage=args.critic_zero_stage
+            )
 
 
 if __name__ == "__main__":

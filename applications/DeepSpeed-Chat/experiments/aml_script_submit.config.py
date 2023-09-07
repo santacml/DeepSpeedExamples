@@ -1,6 +1,6 @@
 import os
 from azureml.core import (
-    Environment,
+    Dataset,
     Datastore,
     Experiment,
     ScriptRunConfig,
@@ -10,6 +10,8 @@ from azureml.core import (
 from azureml.core.authentication import InteractiveLoginAuthentication
 from azureml.core.runconfig import PyTorchConfiguration
 from azureml.data import OutputFileDatasetConfig
+
+from hydra_rlhf.azureml_utils import compute_utils, environment_utils
 
 root_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), os.pardir)
 
@@ -21,40 +23,40 @@ ws = Workspace.from_config(
 default_ds = ws.get_default_datastore()
 babela100_ds = Datastore.get(ws, 'babela100')
 
-installation_cmds = "pip install -e .[all] && "
+installation_cmds = "pip install -e .['deepspeed-chat'] && "
 
 script_run_config = ScriptRunConfig(
     source_directory=os.path.join(root_dir),
     command=[
-        installation_cmds + "deepspeed ./examples/training/step1_supervised_finetuning/main.py",
-        "--data_path", "Dahoas/rm-static Dahoas/full-hh-rlhf Dahoas/synthetic-instruct-gptj-pairwise yitingxie/rlhf-reward-datasets",
-        "--data_split", "2,4,4",
-        "--model_name_or_path", "meta-llama/Llama-2-7b-hf",
-        "--per_device_train_batch_size", "4",
-        "--per_device_eval_batch_size", "4",
-        "--max_seq_len", "512",
-        "--learning_rate", "9.65e-6",
-        "--weight_decay", "0",
-        "--num_train_epochs", "4",
-        "--gradient_accumulation_steps", "1",
+        installation_cmds + "deepspeed", "./examples/deepspeed_chat/training/step1_supervised_finetuning/main.py",
+        "--data_path", Dataset.File.from_files(babela100_ds.path("misantac_oss_rlhf/stackllama_md_processed/stackllama_md_filtered_processed_150000/**")).as_mount(),
+        "--data_split", "4,2,4",
+        "--model_path", Dataset.File.from_files(path=[(babela100_ds, "llama/llama_7b_easylm_to_hf_conversion/")], validate=True).as_mount(),
+        "--per_device_train_batch_size", "1",
+        "--per_device_eval_batch_size", "2",
+        "--max_seq_len", "800",
+        "--learning_rate", "5e-7",
+        "--weight_decay", ".1",
+        "--num_train_epochs", "5",
+        "--gradient_accumulation_steps", "3",
         "--lr_scheduler_type", "cosine",
         "--num_warmup_steps", "0",
-        "--seed", "1234",
-        "--gradient_checkpointing",
-        "--zero_stage", "3",
+        "--seed", "42",
+        "--zero_stage", "1",
+        "--lora_dim", "0",
+        "--lora_module_name", "layers",
         "--deepspeed",
-        "--lora_dim", "128",
-        "--lora_module_name", "layers.",
-        "--output_dir", OutputFileDatasetConfig(destination=(default_ds, "deepspeed-chat/sft"))
+        "--only_optimize_lora",
+        "--output_dir", OutputFileDatasetConfig(destination=(default_ds, "hydra-rlhf/sft"))
     ],
-    compute_target=ws.compute_targets["A100-80G-PCIE-westus3"],
-    environment=Environment.get(workspace=ws, name="AzureML-pytorch-1.9-ubuntu18.04-py37-cuda11-gpu").clone("deepspeed-chat-env"),
-    # environment=Environment.from_dockerfile(
-    #     "deepspeed-chat-env",
-    #     os.path.join(root_dir, "experiments", "dockerfile")
-    # ),
-    distributed_job_config=PyTorchConfiguration(process_count=8, node_count=1),
+    compute_target=compute_utils.create_compute_target(ws, "A100-80G-PCIE-westus3"),
+    environment=environment_utils.create_env(
+        ws,
+        "hydra-rlhf-env",
+        os.path.join(root_dir, "requirements.txt")
+    ),
+    distributed_job_config=PyTorchConfiguration(process_count=4, node_count=1),
 )
 
-exp = Experiment(workspace=ws, name="deepspeed-chat-rlhf")
+exp = Experiment(workspace=ws, name="deepspeed-chat")
 exp.submit(config=script_run_config)

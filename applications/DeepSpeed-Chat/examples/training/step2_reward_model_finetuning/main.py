@@ -6,7 +6,7 @@
 import argparse
 import os
 import math
-import sys
+import shutil
 
 import torch
 from torch.utils.data import DataLoader, RandomSampler, SequentialSampler
@@ -22,54 +22,70 @@ from deepspeed.ops.adam import DeepSpeedCPUAdam, FusedAdam
 
 from deepspeed_chat.utils.model.model_utils import create_critic_model
 from deepspeed_chat.utils.data.data_utils import create_prompt_dataset, DataCollatorReward
-from deepspeed_chat.utils.utils import print_rank_0, to_device, save_hf_format, set_random_seed, get_all_reduce_mean, get_optimizer_grouped_parameters, save_zero_three_model, load_hf_tokenizer, AzureMLLogger
+from deepspeed_chat.utils.utils import (
+    print_rank_0,
+    to_device,
+    save_hf_format,
+    set_random_seed,
+    get_all_reduce_mean,
+    get_optimizer_grouped_parameters,
+    save_zero_three_model,
+    load_hf_tokenizer,
+    AzureMLLogger
+)
 from deepspeed_chat.utils.ds_utils import get_train_ds_config
-from deepspeed_chat.utils.module.lora import convert_linear_layer_to_lora, convert_lora_to_linear_layer, only_optimize_lora_parameters, make_model_gradient_checkpointing_compatible
+from deepspeed_chat.utils.module.lora import (
+    convert_linear_layer_to_lora,
+    convert_lora_to_linear_layer,
+    only_optimize_lora_parameters,
+    make_model_gradient_checkpointing_compatible,
+    unfuse_lora_linear_layer
+)
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(
-        description=
-        "Finetune a transformers model on a causal language modeling task")
-    parser.add_argument('--data_path',
-                        nargs='*',
-                        default=['Dahoas/rm-static'],
-                        help='Path to the training dataset. Accepted format:'
-                        '1) a single data path, 2) multiple datasets in the'
-                        'form: dataset1-path dataset2-path ...')
-    parser.add_argument('--data_split',
-                        type=str,
-                        default='2,4,4',
-                        help='Comma-separated list of proportions for training'
-                        'phase 1, 2, and 3 data. For example the split `2,4,4`'
-                        'will use 60%% of data for phase 1, 20%% for phase 2'
-                        'and 20%% for phase 3.')
+    parser = argparse.ArgumentParser(description="Finetune a transformers model on a causal language modeling task")
+    parser.add_argument(
+        '--data_path',
+        nargs='*',
+        default=['Dahoas/rm-static'],
+        help='Path to the training dataset. Accepted format:'
+        '1) a single data path, 2) multiple datasets in the'
+        'form: dataset1-path dataset2-path ...'
+    )
+    parser.add_argument(
+        '--data_split',
+        type=str,
+        default='2,4,4',
+        help='Comma-separated list of proportions for training'
+        'phase 1, 2, and 3 data. For example the split `2,4,4`'
+        'will use 60%% of data for phase 1, 20%% for phase 2'
+        'and 20%% for phase 3.'
+    )
     parser.add_argument(
         '--data_output_path',
         type=str,
         default='/tmp/data_files/',
-        help='Where to store the data-related files such as shuffle index.')
+        help='Where to store the data-related files such as shuffle index.'
+    )
     parser.add_argument(
-        "--model_name",
+        "--model_name_or_path",
         type=str,
-        help=
-        "Model identifier from huggingface.co/models.",
+        help="Path to pretrained model or model identifier from huggingface.co/models.",
         required=False,
     )
     parser.add_argument(
-        "--model_path",
+        "--model_dir",
         type=str,
-        help=
-        "Path to pretrained model.",
+        help="Directory location of model (joined with model_name_or_path).",
         required=False,
     )
     parser.add_argument(
         "--num_padding_at_beginning",
         type=int,
         default=1,
-        help=
-        "OPT model has a fixed number (1) of padding tokens at the beginning of the input. "
-        "We did not see this in other models but keep it as an option for now.",
+        help="OPT model has a fixed number (1) of padding tokens at the beginning of the input. "
+             "We did not see this in other models but keep it as an option for now.",
     )
     parser.add_argument(
         "--per_device_train_batch_size",
@@ -93,17 +109,20 @@ def parse_args():
         "--learning_rate",
         type=float,
         default=5e-5,
-        help=
-        "Initial learning rate (after the potential warmup period) to use.",
+        help="Initial learning rate (after the potential warmup period) to use.",
     )
-    parser.add_argument("--weight_decay",
-                        type=float,
-                        default=0.,
-                        help="Weight decay to use.")
-    parser.add_argument("--num_train_epochs",
-                        type=int,
-                        default=1,
-                        help="Total number of training epochs to perform.")
+    parser.add_argument(
+        "--weight_decay",
+        type=float,
+        default=0.,
+        help="Weight decay to use."
+    )
+    parser.add_argument(
+        "--num_train_epochs",
+        type=int,
+        default=1,
+        help="Total number of training epochs to perform."
+    )
     parser.add_argument(
         "--gradient_accumulation_steps",
         type=int,
@@ -125,70 +144,103 @@ def parse_args():
         "--num_warmup_steps",
         type=int,
         default=0,
-        help="Number of steps for the warmup in the lr scheduler.")
-    parser.add_argument("--output_dir",
-                        type=str,
-                        default=None,
-                        help="Where to store the model.")
-    parser.add_argument("--seed",
-                        type=int,
-                        default=1234,
-                        help="A seed for reproducible training.")
-    parser.add_argument("--local_rank",
-                        type=int,
-                        default=-1,
-                        help="local_rank for distributed training on gpus")
+        help="Number of steps for the warmup in the lr scheduler."
+    )
+    parser.add_argument(
+        "--output_dir",
+        type=str,
+        default=None,
+        help="Where to store the model."
+    )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=1234,
+        help="A seed for reproducible training."
+    )
+    parser.add_argument(
+        "--local_rank",
+        type=int,
+        default=-1,
+        help="local_rank for distributed training on gpus"
+    )
     parser.add_argument(
         '--gradient_checkpointing',
         action='store_true',
-        help='Enable HF gradient checkpointing for Actor model.')
-    parser.add_argument('--disable_dropout',
-                        action='store_true',
-                        help='Disable the dropout of the model.')
+        help='Enable HF gradient checkpointing for Actor model.'
+    )
+    parser.add_argument(
+        '--disable_dropout',
+        action='store_true',
+        help='Disable the dropout of the model.'
+    )
+
     # deepspeed features
-    parser.add_argument('--offload',
-                        action='store_true',
-                        help='Enable ZeRO Offload techniques.')
+    parser.add_argument(
+        '--offload',
+        action='store_true',
+        help='Enable ZeRO Offload techniques.'
+    )
     parser.add_argument(
         '--zero_stage',
         type=int,
         default=0,
-        help='ZeRO optimization stage for Actor model (and clones).')
-    ## LoRA for efficient training setting
-    parser.add_argument("--lora_dim",
-                        type=int,
-                        default=0,
-                        help="If > 0, use LoRA for efficient training.")
-    parser.add_argument("--lora_module_name",
-                        type=str,
-                        default="decoder.layers.",
-                        help="The scope of LoRA.")
-    parser.add_argument('--only_optimize_lora',
-                        action='store_true',
-                        help='Only optimize the LoRA parameters.')
+        help='ZeRO optimization stage for Actor model (and clones).'
+    )
+
+    # LoRA for efficient training setting
+    parser.add_argument(
+        "--lora_dim",
+        type=int,
+        default=0,
+        help="If > 0, use LoRA for efficient training."
+    )
+    parser.add_argument(
+        "--lora_module_name",
+        type=str,
+        default="decoder.layers.",
+        help="The scope of LoRA."
+    )
+    parser.add_argument(
+        '--only_optimize_lora',
+        action='store_true',
+        help='Only optimize the LoRA parameters.'
+    )
     parser.add_argument(
         "--lora_learning_rate",
         type=float,
         default=5e-4,
-        help=
-        "Initial LoRA learning rate (after the potential warmup period) to use."
+        help="Initial LoRA learning rate (after the potential warmup period) to use."
     )
-    ## Tensorboard logging
-    parser.add_argument('--enable_tensorboard',
-                        action='store_true',
-                        help='Enable tensorboard logging')
-    parser.add_argument('--tensorboard_path',
-                        type=str,
-                        default="step2_tensorboard")
+
+    # Tensorboard logging
+    parser.add_argument(
+        '--enable_tensorboard',
+        action='store_true',
+        help='Enable tensorboard logging'
+    )
+    parser.add_argument(
+        '--tensorboard_path',
+        type=str,
+        default="step2_tensorboard"
+    )
     parser = deepspeed.add_config_arguments(parser)
     args = parser.parse_args()
+
+    if args.model_dir:
+        if args.model_name_or_path:
+            model_path = os.path.join(args.model_dir, args.model_name_or_path)
+            assert os.path.exists(model_path), f"model_path {model_path} does not exist"
+            args.model_name_or_path = model_path
+        else:
+            args.model_name_or_path = args.model_dir
 
     return args
 
 
 def main():
     args = parse_args()
-    
+
     if "LOCAL_RANK" in os.environ:
         local_rank = os.environ.get('LOCAL_RANK')
         args.local_rank = int(local_rank)
@@ -205,23 +257,19 @@ def main():
         # torch.distributed.init_process_group(backend='nccl')
         deepspeed.init_distributed()
 
-    assert args.model_path or args.model_name
-    args.model_name_or_path = args.model_path if args.model_path  else args.model_name
-
     args.global_rank = torch.distributed.get_rank()
 
     azureml_logger = AzureMLLogger(args)
 
-    ds_config = get_train_ds_config(offload=args.offload,
-                                    stage=args.zero_stage,
-                                    enable_tensorboard=args.enable_tensorboard,
-                                    tb_path=args.tensorboard_path,
-                                    tb_name="step2_model")
-    ds_config[
-        'train_micro_batch_size_per_gpu'] = args.per_device_train_batch_size
-    ds_config[
-        'train_batch_size'] = args.per_device_train_batch_size * torch.distributed.get_world_size(
-        ) * args.gradient_accumulation_steps
+    ds_config = get_train_ds_config(
+        offload=args.offload,
+        stage=args.zero_stage,
+        enable_tensorboard=args.enable_tensorboard,
+        tb_path=args.tensorboard_path,
+        tb_name="step2_model"
+    )
+    ds_config['train_micro_batch_size_per_gpu'] = args.per_device_train_batch_size
+    ds_config['train_batch_size'] = args.per_device_train_batch_size * torch.distributed.get_world_size() * args.gradient_accumulation_steps
 
     # If passed along, set the training seed now.
     set_random_seed(args.seed)
@@ -229,11 +277,13 @@ def main():
 
     # load_hf_tokenizer will get the correct tokenizer and set padding tokens based on the model family
     tokenizer = load_hf_tokenizer(args.model_name_or_path, fast_tokenizer=True)
-    rm_model = create_critic_model(args.model_name_or_path,
-                                   tokenizer,
-                                   ds_config,
-                                   args.num_padding_at_beginning,
-                                   disable_dropout=args.disable_dropout)
+    rm_model = create_critic_model(
+        args.model_name_or_path,
+        tokenizer,
+        ds_config,
+        args.num_padding_at_beginning,
+        disable_dropout=args.disable_dropout
+    )
 
     if args.lora_dim > 0:
         rm_model = convert_linear_layer_to_lora(rm_model,
@@ -247,7 +297,8 @@ def main():
     train_dataset, eval_dataset = create_prompt_dataset(
         args.local_rank, args.data_path, args.data_split,
         args.data_output_path, train_phase, args.seed, tokenizer,
-        args.max_seq_len)
+        args.max_seq_len
+    )
 
     # DataLoaders creation:
     data_collator = DataCollatorReward()
@@ -257,15 +308,20 @@ def main():
     else:
         train_sampler = DistributedSampler(train_dataset)
         eval_sampler = DistributedSampler(eval_dataset)
-    train_dataloader = DataLoader(train_dataset,
-                                  collate_fn=data_collator,
-                                  sampler=train_sampler,
-                                  batch_size=args.per_device_train_batch_size)
+
+    train_dataloader = DataLoader(
+        train_dataset,
+        collate_fn=data_collator,
+        sampler=train_sampler,
+        batch_size=args.per_device_train_batch_size
+    )
     eval_sampler = SequentialSampler(eval_dataset)
-    eval_dataloader = DataLoader(eval_dataset,
-                                 collate_fn=data_collator,
-                                 sampler=eval_sampler,
-                                 batch_size=args.per_device_eval_batch_size)
+    eval_dataloader = DataLoader(
+        eval_dataset,
+        collate_fn=data_collator,
+        sampler=eval_sampler,
+        batch_size=args.per_device_eval_batch_size
+    )
 
     def evaluation_reward(model, eval_dataloader):
         model.eval()
@@ -328,19 +384,24 @@ def main():
 
     print_rank_0(
         f"***** Evaluating reward, Epoch {0}/{args.num_train_epochs} *****",
-        args.global_rank)
+        args.global_rank
+    )
     reward_score, acc = evaluation_reward(rm_model, eval_dataloader)
     print_rank_0(
         f"chosen_last_scores (higher is better) : {reward_score}, acc (higher is better) : {acc}",
-        args.global_rank)
+        args.global_rank
+    )
     azureml_logger.log("val_acc", float(acc))
     azureml_logger.log("val_reward", float(reward_score))
 
+    best_val_acc = 0
+    best_val_acc_epoch = 0
     global_step = 0
     for epoch in range(args.num_train_epochs):
         print_rank_0(
             f"Beginning of Epoch {epoch+1}/{args.num_train_epochs}, Total Micro Batches {len(train_dataloader)}",
-            args.global_rank)
+            args.global_rank
+        )
         rm_model.train()
         mean_loss = 0
         for step, batch in enumerate(train_dataloader):
@@ -353,24 +414,51 @@ def main():
 
             azureml_logger.log("step", global_step)
             azureml_logger.log("train_loss", float(loss))
-            azureml_logger.log("train_mean_loss", float(mean_loss/(step+1)))
+            azureml_logger.log("train_mean_loss", float(mean_loss / (step+1)))
             global_step += 1
 
         print_rank_0(
             f"Epoch {epoch+1}/{args.num_train_epochs} with loss {mean_loss/(step+1)}",
-            args.global_rank)
+            args.global_rank
+        )
         # Evaluate reward_loss on the validation set.
         print_rank_0(
             f"***** Evaluating reward, Epoch {epoch+1}/{args.num_train_epochs} *****",
-            args.global_rank)
+            args.global_rank
+        )
         reward_score, acc = evaluation_reward(rm_model, eval_dataloader)
         print_rank_0(
             f"chosen_last_scores (higher is better) : {reward_score}, acc (higher is better) : {acc}",
-            args.global_rank)
+            args.global_rank
+        )
         azureml_logger.log("val_acc", float(acc))
         azureml_logger.log("val_reward", float(reward_score))
         rm_model.tput_timer.update_epoch_count()
-        
+
+        if acc >= best_val_acc:
+            best_val_acc = acc
+            best_val_acc_epoch = epoch
+
+            if args.output_dir is not None:
+                print_rank_0('Saving intermediate model ...', args.global_rank)
+                rm_model = convert_lora_to_linear_layer(rm_model)
+
+                if args.global_rank == 0:
+                    save_hf_format(rm_model, tokenizer, args, sub_folder=str(epoch))
+
+                if args.zero_stage == 3:
+                    # For zero stage 3, each gpu only has a part of the model, so we need a special save function
+                    save_zero_three_model(rm_model,
+                                        args.global_rank,
+                                        os.path.join(args.output_dir, str(epoch)),
+                                        zero_stage=args.zero_stage)
+
+                rm_model = unfuse_lora_linear_layer(rm_model)
+
+    if args.global_rank == 0:
+        print_rank_0(f"Copying best model... best model epoch is {best_val_acc_epoch} with value {best_val_acc}")
+        best_model_dir = os.path.join(args.output_dir, str(best_val_acc_epoch))
+        shutil.copytree(best_model_dir, args.output_dir, dirs_exist_ok=True)
 
     if args.output_dir is not None:
         print_rank_0('saving model ...', args.global_rank)
@@ -380,10 +468,12 @@ def main():
             save_hf_format(rm_model, tokenizer, args)
         if args.zero_stage == 3:
             # for zero stage 3, each gpu only has a part of the model, so we need to save the model on each gpu by using DS-Engine
-            save_zero_three_model(rm_model,
-                                  args.global_rank,
-                                  args.output_dir,
-                                  zero_stage=args.zero_stage)
+            save_zero_three_model(
+                rm_model,
+                args.global_rank,
+                args.output_dir,
+                zero_stage=args.zero_stage
+            )
 
 
 if __name__ == "__main__":

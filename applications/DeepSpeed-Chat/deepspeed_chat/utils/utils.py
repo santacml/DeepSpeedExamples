@@ -24,11 +24,10 @@ class AzureMLLogger(object):
             self.run = azureml_run
         except ImportError:
             azureml_run = None
-
+    
     def log(self, name, value):
         if self.run is not None and self.rank == 0:
             self.run.log(name, value, description=name)
-
 
 def print_rank_0(msg, rank=0):
     if rank <= 0:
@@ -80,15 +79,24 @@ def get_tokenizer(model_name_or_path, fast_tokenizer=True):
 
 
 def load_hf_tokenizer(model_name_or_path, fast_tokenizer=True):
-    tokenizer = AutoTokenizer.from_pretrained(
-        model_name_or_path,
-        fast_tokenizer=True,
-        # use_fast=False,  # misantac santacml - is this supposed to be added?? according to hf documentation, yes, but in testing, I don't see a difference
-        unk_token="<unk>",
-        bos_token="<s>",
-        eos_token="</s>",
-        padding_side="right" # misantac santacml - uhhhh.... is this correct? is this "left" by default for both llama and opt or...? I think llama only?
-    )
+    if os.path.exists(model_name_or_path):
+        # Locally tokenizer loading has some issue, so we need to force download
+        try:
+            model_json = os.path.join(model_name_or_path, "config.json")
+            if os.path.exists(model_json):
+                model_json_file = json.load(open(model_json))
+                model_name = model_json_file["_name_or_path"]
+                tokenizer = get_tokenizer(model_name,
+                                        fast_tokenizer=fast_tokenizer)
+        except Exception as e:
+            print("Error loading tokenizer from remote, attempting local load...")
+            print(e)
+            tokenizer = get_tokenizer(model_name_or_path,
+                                      fast_tokenizer=fast_tokenizer)
+    else:
+        tokenizer = get_tokenizer(model_name_or_path,
+                                  fast_tokenizer=fast_tokenizer)
+
     return tokenizer
 
 
@@ -182,6 +190,13 @@ def load_state_dict_into_model(model_to_load=None,
     return error_msgs
 
 
+def get_all_gather(tensor):
+    world = torch.distributed.get_world_size()
+    out = [torch.zeros(tensor.shape, dtype=tensor.dtype, device=tensor.device) for n in range(world)]
+    torch.distributed.all_gather(out, tensor)
+    return out
+
+
 def get_optimizer_grouped_parameters(
     model,
     weight_decay,
@@ -267,9 +282,7 @@ def save_zero_three_model(model_ema, global_rank, save_dir, zero_stage=0):
         for k, v in model_to_save.named_parameters():
 
             if hasattr(v, 'ds_id'):
-                with deepspeed.zero.GatheredParameters(_z3_params_to_fetch([v
-                                                                            ]),
-                                                       enabled=zero_stage_3):
+                with deepspeed.zero.GatheredParameters(_z3_params_to_fetch([v]), enabled=zero_stage_3):
                     v_p = v.data.cpu()
             else:
                 v_p = v.cpu()
