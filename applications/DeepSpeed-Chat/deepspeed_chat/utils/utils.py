@@ -86,16 +86,13 @@ def load_hf_tokenizer(model_name_or_path, fast_tokenizer=True):
             if os.path.exists(model_json):
                 model_json_file = json.load(open(model_json))
                 model_name = model_json_file["_name_or_path"]
-                tokenizer = get_tokenizer(model_name,
-                                        fast_tokenizer=fast_tokenizer)
+                tokenizer = get_tokenizer(model_name, fast_tokenizer=fast_tokenizer)
         except Exception as e:
             print("Error loading tokenizer from remote, attempting local load...")
             print(e)
-            tokenizer = get_tokenizer(model_name_or_path,
-                                      fast_tokenizer=fast_tokenizer)
+            tokenizer = get_tokenizer(model_name_or_path, fast_tokenizer=fast_tokenizer)
     else:
-        tokenizer = get_tokenizer(model_name_or_path,
-                                  fast_tokenizer=fast_tokenizer)
+        tokenizer = get_tokenizer(model_name_or_path, fast_tokenizer=fast_tokenizer)
 
     return tokenizer
 

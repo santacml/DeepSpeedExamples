@@ -248,14 +248,14 @@ def parse_args():
 
 def main():
     args = parse_args()
-    
+
     if "LOCAL_RANK" in os.environ:
         local_rank = os.environ.get('LOCAL_RANK')
         args.local_rank = int(local_rank)
         print("My local rank is", args.local_rank)
 
         torch.cuda.set_device(args.local_rank)
-    
+
     if args.local_rank == -1:
         device = torch.device("cuda")
     else:
