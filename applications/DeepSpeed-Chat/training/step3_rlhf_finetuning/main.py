@@ -533,6 +533,15 @@ def main():
     # load_hf_tokenizer will get the correct tokenizer and set padding tokens based on the model family
     tokenizer = load_hf_tokenizer(args.actor_model_name_or_path,
                                   fast_tokenizer=True)
+    reward_tokenizer = load_hf_tokenizer(args.critic_model_name_or_path,
+                                            fast_tokenizer=True)
+    tokenizer_tokens = set(tokenizer.get_vocab().keys())
+    reward_tokenizer_tokens = set(reward_tokenizer.get_vocab().keys())
+
+    if tokenizer_tokens.isdisjoint(reward_tokenizer_tokens):
+        print_rank_0("Using different tokenizers for actor/reference and critic/reward model pairs.", args.global_rank)
+    else:
+        reward_tokenizer = None
         
     prompt_train_dataloader, unsupervised_train_dataloader, num_total_iters = create_datasets(
         args=args, tokenizer=tokenizer, train_phase=3)
@@ -542,6 +551,7 @@ def main():
         actor_model_name_or_path=args.actor_model_name_or_path,
         critic_model_name_or_path=args.critic_model_name_or_path,
         tokenizer=tokenizer,
+        reward_tokenizer=reward_tokenizer,
         num_total_iters=num_total_iters,
         args=args)
 
@@ -724,7 +734,7 @@ def main():
         
 
         if args.global_rank == 0:
-            print(f"Copying best models... best model step is {best_ave_last_rewards_step} with value {best_ave_last_rewards}")
+            print(f"Copying the best model from training: best model step is {best_ave_last_rewards_step} with value {best_ave_last_rewards}")
             best_actor_dir_step = os.path.join(args.output_dir, os.path.join('actor', str(best_ave_last_rewards_step)))
             best_actor_dir = os.path.join(args.output_dir, os.path.join('actor', "best"))
             shutil.copytree(best_actor_dir_step, best_actor_dir)

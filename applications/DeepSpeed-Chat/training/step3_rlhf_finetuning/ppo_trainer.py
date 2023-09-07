@@ -53,6 +53,7 @@ class DeepSpeedPPOTrainer():
         self.ref_model = self.rlhf_engine.ref
         self.reward_model = self.rlhf_engine.reward
         self.tokenizer = self.rlhf_engine.tokenizer
+        self.reward_tokenizer = self.rlhf_engine.reward_tokenizer
         self.args = args
         self.max_answer_seq_len = args.max_answer_seq_len
         self.end_of_conversation_token_id = self.tokenizer(
