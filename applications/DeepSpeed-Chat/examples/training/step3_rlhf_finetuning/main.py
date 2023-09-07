@@ -33,8 +33,8 @@ from transformers import (
 
 import deepspeed
 
-from ppo_trainer import DeepSpeedPPOTrainer, DeepSpeedPPOTrainerUnsupervised
-from rlhf_engine import DeepSpeedRLHFEngine
+from deepspeed_chat.rlhf.ppo_trainer import DeepSpeedPPOTrainer, DeepSpeedPPOTrainerUnsupervised
+from deepspeed_chat.rlhf.rlhf_engine import DeepSpeedRLHFEngine
 
 from deepspeed_chat.utils.data.data_utils import create_prompt_dataset, MiniDataset, DataCollatorRLHF, get_unsupervised_data
 from deepspeed_chat.utils.utils import (
