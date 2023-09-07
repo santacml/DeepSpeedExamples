@@ -1,0 +1,7 @@
+aml_config:
+  workspace_name: tscience_research
+  resource_group: tscience
+  subscription_id: 9ec1d932-0f3f-486c-acc6-e7d78b358f9b
+  cpu_target: d15
+  gpu_target: A100-80G-PCIE-westus3
+  datastore: 'babela100'
