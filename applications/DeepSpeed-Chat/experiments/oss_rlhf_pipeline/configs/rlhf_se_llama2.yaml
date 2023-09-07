@@ -1,0 +1,34 @@
+defaults:
+  - aml_config
+  - _self_
+
+hydra:
+  searchpath:
+    - file://.
+
+# AML run settings
+run:
+  experiment_name: hydra-rlhf-oss
+  job_name: rlhf-stack-exchange-llama2
+  tags: {}
+  regenerate_outputs: False
+
+# Experiment settings
+datasets:
+  all:
+    path: "misantac_oss_rlhf/stackllama_md_processed/stackllama_md_filtered_processed_150000/"
+  display_name: "stack-exchange"
+
+models:
+  model_size: "7B"
+  base_model_path: "llama-2/Llama-2-7b-hf/"
+
+outputs:
+  output_dir: oss_rlhf
+
+components:
+  sft: "components/sft.yaml"
+  rm: "components/rm.yaml"
+  rl: "components/rl.yaml"
+  single_eval: "components/single_evaluation.yaml"
+  compare_eval: "components/compare_evaluation.yaml"
