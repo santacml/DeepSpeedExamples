@@ -58,7 +58,7 @@ jobs:
       --lora_module_name=layers
       --deepspeed
       --only_optimize_lora
-      --output_dir=/mnt/data/hydra-rlhf/sft
+      --output_dir=/mnt/data/rlhf_models/sft
     sla_tier: premium
     priority: high
 
@@ -88,7 +88,7 @@ jobs:
       --lora_module_name=layers
       --deepspeed
       --only_optimize_lora
-      --output_dir=/mnt/data/hydra-rlhf/rm
+      --output_dir=/mnt/data/rlhf_models/rm
     sla_tier: premium
     priority: high
 
@@ -130,6 +130,6 @@ jobs:
       --disable_actor_dropout
       --only_optimize_lora
       --deepspeed
-      --output_dir=/mnt/data/hydra-rlhf/rl
+      --output_dir=/mnt/data/rlhf_models/rl
     sla_tier: premium
     priority: high
