@@ -18,7 +18,7 @@ setuptools.setup(
         "protobuf==3.20.3",
         "accelerate>=0.15.0",
         "torch>=1.12.0",
-        "deepspeed>=0.9.0",
+        "deepspeed>=0.9.2",
         "transformers",
         "tensorboard"
     ],

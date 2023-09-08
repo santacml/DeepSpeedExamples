@@ -26,10 +26,7 @@ def get_model_norm(model):
         total = 0.0
         for param in model.parameters():
             should_gather = hasattr(param, 'ds_id') and param.ds_status == ZeroParamStatus.NOT_AVAILABLE
-            with deepspeed.zero.GatheredParameters(
-                param,
-                enabled=should_gather
-            ):
+            with deepspeed.zero.GatheredParameters(param, enabled=should_gather):
                 total += float(param.float().norm())
 
     return total
@@ -42,7 +39,7 @@ def gather_log_probs(logits, labels):
 
 
 class DeepSpeedPPOTrainer():
-    
+
     def __init__(self, rlhf_engine, args):
         self.rlhf_engine = rlhf_engine
         self.actor_model = self.rlhf_engine.actor
@@ -123,7 +120,11 @@ class DeepSpeedPPOTrainer():
         attention_mask = seq.not_equal(pad_token_id).long()
 
         with torch.no_grad():
-            reward_score = self.reward_model.forward_value(seq, attention_mask, prompt_length=self.prompt_length)['chosen_end_scores'].detach()
+            reward_score = self.reward_model.forward_value(
+                seq,
+                attention_mask,
+                prompt_length=self.prompt_length
+            )['chosen_end_scores'].detach()
 
             output_ref = None
             output = None
@@ -139,6 +140,7 @@ class DeepSpeedPPOTrainer():
         if not reward_only:
             logprobs = gather_log_probs(output.logits[:, :-1, :], seq[:, 1:])
             logprobs_ref = gather_log_probs(output_ref.logits[:, :-1, :], seq[:, 1:])
+
 
         self.generate_time = generate_end - generate_start
 
@@ -182,7 +184,12 @@ class DeepSpeedPPOTrainer():
 
         old_values = values
         with torch.no_grad():
-            old_rewards = self.compute_rewards(prompts, log_probs, ref_log_probs, reward_score, action_mask)
+            old_rewards = self.compute_rewards(
+                prompts,
+                log_probs,
+                ref_log_probs, reward_score,
+                action_mask
+            )
             ends = start + action_mask[:, start:].sum(1) + 1
             # we need to zero out the reward and value after the end of the conversation
             # otherwise the advantage/return will be wrong
@@ -255,7 +262,7 @@ class DeepSpeedPPOTrainer():
         return pg_loss
 
     def critic_loss_fn(self, values, old_values, returns, mask):
-        ## value loss
+        # value loss
         values_clipped = torch.clamp(
             values,
             old_values - self.cliprange_value,
