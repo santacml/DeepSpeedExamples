@@ -795,16 +795,15 @@ def main():
     if args.output_dir is not None:
         rlhf_engine.save_models("end")
         
-
-    if args.global_rank == 0:
-        print(f"Copying the best model from training: best model step is {best_ave_last_rewards_step} with value {best_ave_last_rewards}")
-        best_actor_dir_step = os.path.join(args.output_dir, os.path.join('actor', str(best_ave_last_rewards_step)))
-        best_actor_dir = os.path.join(args.output_dir, os.path.join('actor', "best"))
-        shutil.copytree(best_actor_dir_step, best_actor_dir)
-
-        best_critic_dir_step = os.path.join(args.output_dir, os.path.join('critic', str(best_ave_last_rewards)))
-        best_critic_dir = os.path.join(args.output_dir, os.path.join('critic', "best"))
-        shutil.copytree(best_critic_dir_step, best_critic_dir)
+        if args.global_rank == 0:
+            print(f"Copying the best model from training: best model step is {best_ave_last_rewards_step} with value {best_ave_last_rewards}")
+            best_actor_dir_step = os.path.join(args.output_dir, os.path.join('actor', str(best_ave_last_rewards_step)))
+            best_actor_dir = os.path.join(args.output_dir, os.path.join('actor', "best"))
+            shutil.copytree(best_actor_dir_step, best_actor_dir)
+    
+            best_critic_dir_step = os.path.join(args.output_dir, os.path.join('critic', str(best_ave_last_rewards)))
+            best_critic_dir = os.path.join(args.output_dir, os.path.join('critic', "best"))
+            shutil.copytree(best_critic_dir_step, best_critic_dir)
 
 
 if __name__ == "__main__":
