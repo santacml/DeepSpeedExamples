@@ -142,7 +142,7 @@ code: ../../../
 launcher:
   type: torch.distributed
   additional_arguments: >
-    pip install -e .[['all']] && deepspeed ./examples/training/step1_supervised_finetuning/main.py
+    pip install -e .[['all']] && python ./examples/training/step1_supervised_finetuning/main.py
       [--data_path {inputs.data_path}]
       [--data_names {inputs.data_names} ]
       [--sft_only_data_path {inputs.sft_only_data_path}] 
