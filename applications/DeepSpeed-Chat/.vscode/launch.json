@@ -9,7 +9,7 @@
       "type": "python",
       "request": "launch",
       "cwd": "${workspaceFolder}/experiments/oss_rlhf_pipeline/",
-      "program": "submit.py",
+      "program": "submit.config.py",
       "justMyCode": false,
       "console": "integratedTerminal"
     },

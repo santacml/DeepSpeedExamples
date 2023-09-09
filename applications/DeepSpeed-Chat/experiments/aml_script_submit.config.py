@@ -10,6 +10,8 @@ from azureml.core import (
 from azureml.core.authentication import InteractiveLoginAuthentication
 from azureml.core.runconfig import PyTorchConfiguration
 from azureml.data import OutputFileDatasetConfig
+from azureml.core.compute import ComputeTarget
+from azureml.core import Environment
 
 from hydra_rlhf.azureml_utils import compute_utils, environment_utils
 
@@ -28,10 +30,11 @@ installation_cmds = "pip install -e .['deepspeed-chat'] && "
 script_run_config = ScriptRunConfig(
     source_directory=os.path.join(root_dir),
     command=[
-        installation_cmds + "deepspeed", "./examples/deepspeed_chat/training/step1_supervised_finetuning/main.py",
+        installation_cmds + "python", "./examples/deepspeed_chat/training/step1_supervised_finetuning/main.py",
         "--data_path", Dataset.File.from_files(babela100_ds.path("misantac_oss_rlhf/stackllama_md_processed/stackllama_md_filtered_processed_150000/**")).as_mount(),
         "--data_split", "4,2,4",
-        "--model_path", Dataset.File.from_files(path=[(babela100_ds, "llama/llama_7b_easylm_to_hf_conversion/")], validate=True).as_mount(),
+        "--model_dir", Dataset.File.from_files(path=[(babela100_ds, "llama-2")], validate=True).as_mount(),
+        "--model_name_or_path", "Llama-2-7b-hf",
         "--per_device_train_batch_size", "1",
         "--per_device_eval_batch_size", "2",
         "--max_seq_len", "800",
@@ -47,16 +50,12 @@ script_run_config = ScriptRunConfig(
         "--lora_module_name", "layers",
         "--deepspeed",
         "--only_optimize_lora",
-        "--output_dir", OutputFileDatasetConfig(destination=(default_ds, "hydra-rlhf/sft"))
+        "--output_dir", OutputFileDatasetConfig(destination=(default_ds, "rlhf_models/sft"))
     ],
-    compute_target=compute_utils.create_compute_target(ws, "A100-80G-PCIE-westus3"),
-    environment=environment_utils.create_env(
-        ws,
-        "hydra-rlhf-env",
-        os.path.join(root_dir, "requirements.txt")
-    ),
+    compute_target=ComputeTarget(workspace=ws, name="A100-80G-PCIE-westus3"),
+    environment=Environment.get(workspace=ws, name="dschat-rlhf-env"),
     distributed_job_config=PyTorchConfiguration(process_count=4, node_count=1),
 )
 
-exp = Experiment(workspace=ws, name="deepspeed-chat")
+exp = Experiment(workspace=ws, name="deepspeed-chat-14b84db0")
 exp.submit(config=script_run_config)

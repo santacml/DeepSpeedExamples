@@ -3,50 +3,51 @@ from pathlib import Path
 import datetime
 import time
 
-from hydra.utils import get_original_cwd, to_absolute_path
-import hydra
 from azureml.core import Workspace, Dataset, Datastore
+from azureml.core.authentication import InteractiveLoginAuthentication
 from azure.ml.component import Component, dsl
 
 
-@hydra.main(config_path="configs", config_name="rlhf_se_llama2")
 def main(config):
     timestamp = datetime.datetime.fromtimestamp(time.time()).strftime('%Y-%m-%d-%H%M%S')
-    output_path = os.path.join(config.outputs.output_dir, f"logs-{timestamp}")
+    output_path = os.path.join('oss_rlhf', f"logs-{timestamp}")
+    job_name = 'rlhf-stack-exchange-llama2'
+    compute_name = 'A100-80G-PCIE-westus3'
+    num_nodes = 1
+    processes_per_node = 4
 
     ################################################
     # Connect to Azure ML workspace
     ################################################
-    ws = Workspace(
-        subscription_id=config.aml_config.subscription_id,
-        resource_group=config.aml_config.resource_group,
-        workspace_name=config.aml_config.workspace_name,
+    ws = Workspace.from_config(
+        path=os.path.join(os.path.dirname(os.path.realpath(__file__)), os.pardir, os.pardir, 'aml_ws_configs', 'tscience_research.json'),
+        auth=InteractiveLoginAuthentication(tenant_id="72f988bf-86f1-41af-91ab-2d7cd011db47")
     )
-    datastore = Datastore.get(ws, config.aml_config.datastore)
+    datastore = Datastore.get(ws, 'babela100')
 
     ################################################
     # Load dataset(s)
     ################################################
-    data_sft_train = Dataset.File.from_files(path=[(datastore, config.datasets.all.path)], validate=True).as_mount()
-    data_sft_val = Dataset.File.from_files(path=[(datastore, config.datasets.all.path)], validate=True).as_mount()
-    data_rm_train = Dataset.File.from_files(path=[(datastore, config.datasets.all.path)], validate=True).as_mount()
-    data_rm_val = Dataset.File.from_files(path=[(datastore, config.datasets.all.path)], validate=True).as_mount()
-    data_ppo_train = Dataset.File.from_files(path=[(datastore, config.datasets.all.path)], validate=True).as_mount()
-    data_eval = Dataset.File.from_files(path=[(datastore, config.datasets.all.path)], validate=True).as_mount()
+    all_datasets_path = "misantac_oss_rlhf/stackllama_md_processed/stackllama_md_filtered_processed_150000/"
+    data_sft_train = Dataset.File.from_files(path=[(datastore, all_datasets_path)], validate=True).as_mount()
+    data_sft_val = Dataset.File.from_files(path=[(datastore, all_datasets_path)], validate=True).as_mount()
+    data_rm_train = Dataset.File.from_files(path=[(datastore, all_datasets_path)], validate=True).as_mount()
+    data_rm_val = Dataset.File.from_files(path=[(datastore, all_datasets_path)], validate=True).as_mount()
+    data_ppo_train = Dataset.File.from_files(path=[(datastore, all_datasets_path)], validate=True).as_mount()
+    data_eval = Dataset.File.from_files(path=[(datastore, all_datasets_path)], validate=True).as_mount()
 
     ################################################
     # Load base model(s)
     ################################################
-    model_dir = Dataset.File.from_files(path=[(datastore, config.models.base_model_path)], validate=True).as_mount()
+    model_dir = Dataset.File.from_files(path=[(datastore, "llama-2")], validate=True).as_mount()
 
     ################################################
     # Load components
     ################################################
-    sft_train_func = Component.from_yaml(ws, yaml_file=to_absolute_path(f"{config.components.sft}"))
-    rm_train_func = Component.from_yaml(ws, yaml_file=to_absolute_path(f"{config.components.rm}"))
-    rl_func = Component.from_yaml(ws, yaml_file=to_absolute_path(f"{config.components.ppo}"))
-    single_eval_func = Component.from_yaml(ws, yaml_file=to_absolute_path(f"{config.components.single_eval}"))
-    compare_eval_func = Component.from_yaml(ws, yaml_file=to_absolute_path(f"{config.components.compare_eval}"))
+    components_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'components')
+    sft_train_func = Component.from_yaml(ws, yaml_file=os.path.join(components_dir, 'sft.yaml'))
+    rm_train_func = Component.from_yaml(ws, yaml_file=os.path.join(components_dir, 'rm.yaml'))
+    rl_func = Component.from_yaml(ws, yaml_file=os.path.join(components_dir, 'rl.yaml'))
 
     sft_model_input_path = None
     rm_model_input_path = None
@@ -56,8 +57,8 @@ def main(config):
     # Define pipeline (configure and connect components)
     ################################################
     @dsl.pipeline(
-        name=f"{timestamp}-{config.run.job_name}-{config.models.model_size}",
-        default_compute_target=config.aml_config.gpu_target,
+        name=f"{timestamp}-{job_name}",
+        default_compute_target=compute_name,
     )
     def build_pipeline():
         ################################################
@@ -65,11 +66,10 @@ def main(config):
         ################################################
         if sft_model_input_path is None:
             sft_trainer = sft_train_func(
-                data_names=None,
                 data_path=data_sft_train,
                 data_split="4,2,4",
                 model_dir=model_dir,
-                model_name_or_path="",
+                model_name_or_path="/Llama-2-7b-hf/",
                 per_device_train_batch_size=1,
                 per_device_eval_batch_size=2,
                 max_seq_len=400 + 400,
@@ -84,7 +84,7 @@ def main(config):
                 lora_dim=0,
                 lora_module_name="layers",
             )
-            sft_trainer.runsettings.resource_layout.configure(instance_count=1, process_count_per_node=8)
+            sft_trainer.runsettings.resource_layout.configure(instance_count=num_nodes, process_count_per_node=processes_per_node)
             sft_trainer.outputs.output_dir.configure(
                 mode="mount",
                 path_on_datastore=os.path.join(output_path, "sft"),
@@ -119,7 +119,7 @@ def main(config):
                 lora_dim=0,
                 lora_module_name="layers",
             )
-            rm_trainer.runsettings.resource_layout.configure(instance_count=1, process_count_per_node=8)
+            rm_trainer.runsettings.resource_layout.configure(instance_count=num_nodes, process_count_per_node=processes_per_node)
             rm_trainer.outputs.output_dir.configure(
                 mode="mount",
                 path_on_datastore=os.path.join(output_path, "rm"),
@@ -167,7 +167,7 @@ def main(config):
                 multilora_mode="none",
                 save_strategy="reward"
             )
-            ppo_trainer.runsettings.resource_layout.configure(instance_count=1, process_count_per_node=8)
+            ppo_trainer.runsettings.resource_layout.configure(instance_count=num_nodes, process_count_per_node=processes_per_node)
             ppo_trainer.outputs.output_dir.configure(
                 mode="mount",
                 path_on_datastore=os.path.join(output_path, "ppo"),
@@ -177,43 +177,16 @@ def main(config):
         else:
             ppo_model_path = ppo_model_input_path
 
-        ################################################
-        # Batch Inference Eval
-        ################################################
-        eval_sft = single_eval_func(
-            model_path_baseline=sft_model_path,
-            num_padding_at_beginning=0,
-            max_new_tokens=400,
-            data_path=data_eval,
-        )
-        eval_sft.runsettings.resource_layout.configure(instance_count=1, process_count_per_node=1)
-
-        eval_ppo = single_eval_func(
-            model_path_baseline=ppo_model_path,
-            num_padding_at_beginning=0,
-            max_new_tokens=400,
-            data_path=data_eval,
-        )
-        eval_ppo.runsettings.resource_layout.configure(instance_count=1, process_count_per_node=1)
-
-        eval_sft_vs_ppo = compare_eval_func(
-            baseline_model_outputs=eval_sft.outputs.output_dir,
-            finetune_model_outputs=eval_ppo.outputs.output_dir,
-            num_padding_at_beginning=0,
-            reward_model_path=rm_model_path,
-        )
-        eval_sft_vs_ppo.runsettings.resource_layout.configure(instance_count=1, process_count_per_node=1)
-
     tags = {
-        "dataset": config.datasets.display_name,
+        "dataset": "stack-exchange",
     }
     tags.update(config.run.tags)
 
     pipeline = build_pipeline()
     run = pipeline.submit(
         tags=tags,
-        experiment_name=config.run.experiment_name,
-        regenerate_outputs=config.run.regenerate_outputs,
+        experiment_name="deepspeed-chat-14b84db0",
+        regenerate_outputs=False,
     )
 
 
