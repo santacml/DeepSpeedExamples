@@ -30,7 +30,7 @@ installation_cmds = "pip install -e .['deepspeed-chat'] && "
 script_run_config = ScriptRunConfig(
     source_directory=os.path.join(root_dir),
     command=[
-        installation_cmds + "python", "./examples/deepspeed_chat/training/step1_supervised_finetuning/main.py",
+        installation_cmds + "python", "./examples/training/step1_supervised_finetuning/main.py",
         "--data_path", Dataset.File.from_files(babela100_ds.path("misantac_oss_rlhf/stackllama_md_processed/stackllama_md_filtered_processed_150000/**")).as_mount(),
         "--data_split", "4,2,4",
         "--model_dir", Dataset.File.from_files(path=[(babela100_ds, "llama-2")], validate=True).as_mount(),
