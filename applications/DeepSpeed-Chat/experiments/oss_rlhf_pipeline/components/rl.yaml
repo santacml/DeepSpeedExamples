@@ -214,14 +214,13 @@ code: ../../../
 launcher:
   type: torch.distributed
   additional_arguments: >    
-    pip install -e .[['all']] && python ./examples/training/step3_rlhf_finetuning/main.py
+    pip install -e . && python ./examples/training/step3_rlhf_finetuning/main.py
       [--data_path {inputs.data_path} ]
-      [--data_names {inputs.data_names} ]
       --data_split {inputs.data_split}  
       [--actor_model_name_or_path {inputs.actor_model_name_or_path}]
       [--actor_model_dir {inputs.actor_model_dir} ]
       [--critic_model_name_or_path {inputs.critic_model_name_or_path}]
-      [ {inputs.critic_model_dir} ]
+      [--critic_model_dir {inputs.critic_model_dir} ]
       --num_padding_at_beginning {inputs.num_padding_at_beginning} 
       --per_device_generation_batch_size {inputs.per_device_generation_batch_size}
       --per_device_training_batch_size {inputs.per_device_training_batch_size} 

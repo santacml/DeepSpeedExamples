@@ -8,7 +8,7 @@ from azureml.core.authentication import InteractiveLoginAuthentication
 from azure.ml.component import Component, dsl
 
 
-def main(config):
+def main():
     timestamp = datetime.datetime.fromtimestamp(time.time()).strftime('%Y-%m-%d-%H%M%S')
     output_path = os.path.join('oss_rlhf', f"logs-{timestamp}")
     job_name = 'rlhf-stack-exchange-llama2'
@@ -99,10 +99,9 @@ def main(config):
         ################################################
         if rm_model_input_path is None:
             rm_trainer = rm_train_func(
-                data_names=None,
                 data_path=data_rm_train,
                 data_split="2,4,4",
-                model_name_or_path="",
+                model_name_or_path="Llama-2-7b-hf",
                 model_dir=model_dir,
                 per_device_train_batch_size=1,
                 per_device_eval_batch_size=2,
@@ -134,13 +133,12 @@ def main(config):
         ################################################
         if ppo_model_input_path is None:
             ppo_trainer = rl_func(
-                data_names=None,
                 data_path=data_ppo_train,
                 data_split="2,4,4",
                 actor_model_dir=sft_model_path,
-                actor_model_name_or_path=None,
+                actor_model_name_or_path="",
                 critic_model_dir=rm_model_path,
-                critic_model_name_or_path=None,
+                critic_model_name_or_path="",
                 num_padding_at_beginning=0,
                 per_device_generation_batch_size=1,
                 per_device_training_batch_size=3,
@@ -164,8 +162,6 @@ def main(config):
                 actor_lora_module_name="layers",
                 critic_lora_dim=128,
                 critic_lora_module_name="layers",
-                multilora_mode="none",
-                save_strategy="reward"
             )
             ppo_trainer.runsettings.resource_layout.configure(instance_count=num_nodes, process_count_per_node=processes_per_node)
             ppo_trainer.outputs.output_dir.configure(
@@ -180,7 +176,6 @@ def main(config):
     tags = {
         "dataset": "stack-exchange",
     }
-    tags.update(config.run.tags)
 
     pipeline = build_pipeline()
     run = pipeline.submit(

@@ -141,7 +141,7 @@ code: ../../../
 launcher:
   type: torch.distributed
   additional_arguments: >    
-    pip install -e .[['all']] && python ./examples/training/step2_reward_model_finetuning/main.py
+    pip install -e . && python ./examples/training/step2_reward_model_finetuning/main.py
       [--data_path {inputs.data_path}  ]
       [--data_names {inputs.data_names} ]
       --data_split {inputs.data_split}  
