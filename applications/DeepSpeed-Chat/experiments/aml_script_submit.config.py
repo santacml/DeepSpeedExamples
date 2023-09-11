@@ -25,7 +25,7 @@ ws = Workspace.from_config(
 default_ds = ws.get_default_datastore()
 babela100_ds = Datastore.get(ws, 'babela100')
 
-installation_cmds = "pip install -e .['deepspeed-chat'] && "
+installation_cmds = "pip install -e . && "
 
 script_run_config = ScriptRunConfig(
     source_directory=os.path.join(root_dir),
@@ -53,7 +53,7 @@ script_run_config = ScriptRunConfig(
         "--output_dir", OutputFileDatasetConfig(destination=(default_ds, "rlhf_models/sft"))
     ],
     compute_target=ComputeTarget(workspace=ws, name="A100-80G-PCIE-westus3"),
-    environment=Environment.get(workspace=ws, name="dschat-rlhf-env"),
+    environment=Environment.get(workspace=ws, name="hydra-rlhf-env"),
     distributed_job_config=PyTorchConfiguration(process_count=4, node_count=1),
 )
 
