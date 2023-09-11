@@ -42,11 +42,10 @@ def log_init(model_name, stime=None):
 class DeepSpeedRLHFEngine():
 
     def __init__(self, actor_model_name_or_path, critic_model_name_or_path,
-                 tokenizer, reward_tokenizer, args, num_total_iters):
+                 tokenizer, args, num_total_iters):
         self.args = args
         self.num_total_iters = num_total_iters
         self.tokenizer = tokenizer
-        self.reward_tokenizer = reward_tokenizer 
 
         self.actor = self._init_actor(
             actor_model_name_or_path=actor_model_name_or_path)
@@ -217,7 +216,7 @@ class DeepSpeedRLHFEngine():
         # Model
         critic_model = create_critic_model(
             model_name_or_path=critic_model_name_or_path,
-            tokenizer=self.tokenizer if self.reward_tokenizer is None else self.reward_tokenizer,
+            tokenizer=self.tokenizer,
             ds_config=ds_eval_config,
             num_padding_at_beginning=self.args.num_padding_at_beginning,
             rlhf_training=True,
@@ -288,7 +287,7 @@ class DeepSpeedRLHFEngine():
         # Model
         reward_model = create_critic_model(
             model_name_or_path=critic_model_name_or_path,
-            tokenizer=self.tokenizer if self.reward_tokenizer is None else self.reward_tokenizer,
+            tokenizer=self.tokenizer,
             ds_config=ds_eval_config,
             num_padding_at_beginning=self.args.num_padding_at_beginning,
             rlhf_training=True,
