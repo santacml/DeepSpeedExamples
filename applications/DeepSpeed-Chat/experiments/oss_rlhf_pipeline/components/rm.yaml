@@ -25,6 +25,7 @@ environment:
         - transformers
         - pandas
         - azureml-core
+        - tensorboard
         # - flash-attn==1.0.5
         # - git+https://github.com/huggingface/transformers
 
@@ -136,7 +137,7 @@ code: ../../../
 launcher:
   type: torch.distributed
   additional_arguments: >    
-    pip install -e .[['all']] && python ./examples/training/step2_reward_model_finetuning/main.py
+    pip install -e . && python ./examples/training/step2_reward_model_finetuning/main.py
       [--data_path {inputs.data_path}  ]
       --data_split {inputs.data_split}  
       [--model_name_or_path {inputs.model_name_or_path}]

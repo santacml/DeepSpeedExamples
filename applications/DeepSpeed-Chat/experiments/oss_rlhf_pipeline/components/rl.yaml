@@ -23,6 +23,7 @@ environment:
         - transformers
         - pandas
         - azureml-core
+        - tensorboard
         # - git+https://github.com/huggingface/transformers
 
   os: Linux
@@ -209,7 +210,7 @@ code: ../../../
 launcher:
   type: torch.distributed
   additional_arguments: >    
-    pip install -e .[['all']] && python ./examples/training/step3_rlhf_finetuning/main.py
+    pip install -e . && python ./examples/training/step3_rlhf_finetuning/main.py
       [--data_path {inputs.data_path} ]
       --data_split {inputs.data_split}  
       [--actor_model_name_or_path {inputs.actor_model_name_or_path}]
