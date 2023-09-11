@@ -23,6 +23,7 @@ environment:
         - transformers
         - pandas
         - azureml-core
+        - tensorboard
         # - git+https://github.com/huggingface/transformers
 
   os: Linux
@@ -31,11 +32,6 @@ inputs:
     description: Training dataset
     optional: true
     type: path
-  data_names: 
-    description: Training dataset
-    optional: true
-    default: "Dahoas/rm-static"
-    type: string
   data_split:
     description: Comma-separated list of proportions for training
     optional: false

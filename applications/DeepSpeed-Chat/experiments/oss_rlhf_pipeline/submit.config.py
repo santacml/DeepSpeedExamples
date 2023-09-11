@@ -39,7 +39,7 @@ def main():
     ################################################
     # Load base model(s)
     ################################################
-    model_dir = Dataset.File.from_files(path=[(datastore, "llama-2")], validate=True).as_mount()
+    model_dir = Dataset.File.from_files(path=[(datastore, "llama-2/Llama-2-7b-hf/")], validate=True).as_mount()
 
     ################################################
     # Load components
@@ -67,9 +67,8 @@ def main():
         if sft_model_input_path is None:
             sft_trainer = sft_train_func(
                 data_path=data_sft_train,
-                data_split="4,2,4",
+                data_split="1,0,0",
                 model_dir=model_dir,
-                model_name_or_path="/Llama-2-7b-hf/",
                 per_device_train_batch_size=1,
                 per_device_eval_batch_size=2,
                 max_seq_len=400 + 400,
@@ -100,8 +99,7 @@ def main():
         if rm_model_input_path is None:
             rm_trainer = rm_train_func(
                 data_path=data_rm_train,
-                data_split="2,4,4",
-                model_name_or_path="Llama-2-7b-hf",
+                data_split="0,1,0",
                 model_dir=model_dir,
                 per_device_train_batch_size=1,
                 per_device_eval_batch_size=2,
@@ -134,11 +132,9 @@ def main():
         if ppo_model_input_path is None:
             ppo_trainer = rl_func(
                 data_path=data_ppo_train,
-                data_split="2,4,4",
+                data_split="0,0,1",
                 actor_model_dir=sft_model_path,
-                actor_model_name_or_path="",
                 critic_model_dir=rm_model_path,
-                critic_model_name_or_path="",
                 num_padding_at_beginning=0,
                 per_device_generation_batch_size=1,
                 per_device_training_batch_size=3,
@@ -180,7 +176,7 @@ def main():
     pipeline = build_pipeline()
     run = pipeline.submit(
         tags=tags,
-        experiment_name="deepspeed-chat-14b84db0",
+        experiment_name="deepspeed-chat",
         regenerate_outputs=False,
     )
 

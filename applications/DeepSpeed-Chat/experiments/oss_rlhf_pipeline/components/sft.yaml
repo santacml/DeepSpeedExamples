@@ -26,6 +26,7 @@ environment:
         - transformers
         - pandas
         - azureml-core
+        - tensorboard
         # - flash-attn==1.0.5
         # - git+https://github.com/huggingface/transformers
 
