@@ -34,11 +34,6 @@ inputs:
     description: Training dataset
     optional: true
     type: path
-  data_names: 
-    description: Training dataset
-    optional: true
-    default: "Dahoas/rm-static"
-    type: string
   data_split:
     description: Comma-separated list of proportions for training
     optional: false
@@ -143,7 +138,6 @@ launcher:
   additional_arguments: >    
     pip install -e .[['all']] && python ./examples/training/step2_reward_model_finetuning/main.py
       [--data_path {inputs.data_path}  ]
-      [--data_names {inputs.data_names} ]
       --data_split {inputs.data_split}  
       [--model_name_or_path {inputs.model_name_or_path}]
       [--model_dir {inputs.model_dir} ]

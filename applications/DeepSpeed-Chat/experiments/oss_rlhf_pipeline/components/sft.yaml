@@ -35,11 +35,6 @@ inputs:
     description: Training dataset
     optional: true
     type: path
-  data_names: 
-    description: Training dataset
-    optional: true
-    default: "Dahoas/rm-static"
-    type: string
   sft_only_data_path: 
     description: Training dataset for sft especially
     optional: true
@@ -144,7 +139,6 @@ launcher:
   additional_arguments: >
     pip install -e .[['all']] && python ./examples/training/step1_supervised_finetuning/main.py
       [--data_path {inputs.data_path}]
-      [--data_names {inputs.data_names} ]
       [--sft_only_data_path {inputs.sft_only_data_path}] 
       --data_split {inputs.data_split}  
       [--model_name_or_path {inputs.model_name_or_path}]

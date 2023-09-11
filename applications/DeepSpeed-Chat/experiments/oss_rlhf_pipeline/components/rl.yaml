@@ -31,11 +31,6 @@ inputs:
     description: Training dataset
     optional: true
     type: path
-  data_names: 
-    description: Training dataset
-    optional: true
-    default: "Dahoas/rm-static"
-    type: string
   data_split:
     description: Comma-separated list of proportions for training
     optional: false
@@ -216,7 +211,6 @@ launcher:
   additional_arguments: >    
     pip install -e .[['all']] && python ./examples/training/step3_rlhf_finetuning/main.py
       [--data_path {inputs.data_path} ]
-      [--data_names {inputs.data_names} ]
       --data_split {inputs.data_split}  
       [--actor_model_name_or_path {inputs.actor_model_name_or_path}]
       [--actor_model_dir {inputs.actor_model_dir} ]

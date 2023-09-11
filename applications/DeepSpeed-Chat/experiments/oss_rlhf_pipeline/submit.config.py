@@ -39,7 +39,7 @@ def main(config):
     ################################################
     # Load base model(s)
     ################################################
-    model_dir = Dataset.File.from_files(path=[(datastore, "llama-2")], validate=True).as_mount()
+    model_dir = Dataset.File.from_files(path=[(datastore, "llama-2/hf/7b/")], validate=True).as_mount()
 
     ################################################
     # Load components
