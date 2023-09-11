@@ -216,7 +216,7 @@ launcher:
       [--actor_model_name_or_path {inputs.actor_model_name_or_path}]
       [--actor_model_dir {inputs.actor_model_dir} ]
       [--critic_model_name_or_path {inputs.critic_model_name_or_path}]
-      [ {inputs.critic_model_dir} ]
+      [--critic_model_dir {inputs.critic_model_dir} ]
       --num_padding_at_beginning {inputs.num_padding_at_beginning} 
       --per_device_generation_batch_size {inputs.per_device_generation_batch_size}
       --per_device_training_batch_size {inputs.per_device_training_batch_size} 

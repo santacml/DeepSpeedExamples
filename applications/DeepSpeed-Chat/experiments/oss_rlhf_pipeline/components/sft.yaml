@@ -120,8 +120,6 @@ inputs:
     type: string
 
 
-
-
 is_deterministic: true
 meta: 
   requireGpu: true
