@@ -159,7 +159,7 @@ def parse_args():
         "Save the critic model as well as the actor when saving moels."
     )
     parser.add_argument(
-        "--save_improvement_percent",
+        "--save_improvement_threshold",
         type=float,
         default=.06,
         help="During PPO, save if reward has improved by this percentage since the last save. Set to 0 for no improvement saving.")
@@ -713,9 +713,9 @@ def main():
                     save_model = False
                     if (save_interval > 0 and global_step % save_interval == 0) or best_ave_last_rewards == 0:
                         save_model = True
-                    elif args.save_improvement_percent > 0:
+                    elif args.save_improvement_threshold > 0:
                         improvement = (check_reward - best_ave_last_rewards) / abs(best_ave_last_rewards)
-                        save_model = improvement >= args.save_improvement_percent
+                        save_model = improvement >= args.save_improvement_threshold
 
                     if save_model:
                         print_rank_0(f"Previous best reward {check_reward}", args.global_rank)
