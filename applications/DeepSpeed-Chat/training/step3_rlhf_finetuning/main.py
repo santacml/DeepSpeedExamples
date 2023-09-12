@@ -148,15 +148,26 @@ def parse_args():
         default=1,
         help="For generated data, how many ppo training epochs to run.")
     parser.add_argument(
-        "--save_interval",
+        "--saves_per_training_run",
         type=int,
-        default=150,
-        help="During PPO, save after this many steps regardless of performance. Set to 0 for no interval saving.")
+        default=10,
+        help="Save this many models regularly spaced throughout training, regardless of performance. Set to 0 for no  regularly spaced saving.")
+    parser.add_argument(
+        "--save_critic",
+        action='store_true',
+        help=
+        "Save the critic model as well as the actor when saving moels."
+    )
     parser.add_argument(
         "--save_improvement_percent",
         type=float,
         default=.06,
-        help="During PPO, save if performance has improved by this percentage since the last save. Set to 0 for no improvement saving.")
+        help="During PPO, save if reward has improved by this percentage since the last save. Set to 0 for no improvement saving.")
+    parser.add_argument(
+        "--max_saved_models",
+        type=float,
+        default=0,
+        help="During PPO, keep a maximum of this many saved models. Only models with the highest reward are kept. Set to 0 for no limit.")
     parser.add_argument("--max_prompt_seq_len",
                         type=int,
                         default=256,
@@ -577,10 +588,21 @@ def main():
 
     non_overflow_step_count = 0
 
+    max_saved_models = args.max_saved_models
+
     global_step = 0
     last_rewards = []
     best_ave_last_rewards = 0
     best_ave_last_rewards_step = 0
+    saved_models = {}
+    
+    if args.saves_per_training_run == 0:
+        save_interval = 0
+    else:
+        save_interval = int((args.num_train_epochs * min(len(prompt_train_dataloader), len(unsupervised_train_dataloader))) / args.saves_per_training_run)
+
+    print_rank_0(f"Saving models every {save_interval} steps", args.global_rank)
+    
     for epoch in range(args.num_train_epochs):
         print_rank_0(
             f"Beginning of Epoch {epoch+1}/{args.num_train_epochs}, Total Generation Batches {min(len(prompt_train_dataloader), len(unsupervised_train_dataloader))}",
@@ -689,7 +711,7 @@ def main():
                     check_reward = sum(last_rewards) / len(last_rewards)
 
                     save_model = False
-                    if (args.save_interval > 0 and global_step % args.save_interval == 0) or best_ave_last_rewards == 0:
+                    if (save_interval > 0 and global_step % save_interval == 0) or best_ave_last_rewards == 0:
                         save_model = True
                     elif args.save_improvement_percent > 0:
                         improvement = (check_reward - best_ave_last_rewards) / abs(best_ave_last_rewards)
@@ -702,7 +724,15 @@ def main():
                         best_ave_last_rewards = check_reward
                         best_ave_last_rewards_step = step
 
-                        rlhf_engine.save_models(str(step))
+                        rlhf_engine.save_models(model_name=str(step))
+
+                        saved_models[step] = check_reward
+
+                        if max_saved_models > 0 and len(saved_models) > max_saved_models:
+                            worst_model = min(saved_models, key=saved_models.get)
+                            print_rank_0(f"Removing worst model at step {worst_model} with ave reward {saved_models[worst_model]}", args.global_rank)
+                            rlhf_engine.remove_models(model_name=str(worst_model))
+                            del saved_models[worst_model]
 
             if args.actor_gradient_checkpointing:
                 rlhf_engine.actor.gradient_checkpointing_disable()
@@ -718,15 +748,10 @@ def main():
         if args.enable_test_mode:
             break
 
-    if args.output_dir is not None and args.global_rank == 0:
-        print(f"Copying the best model from training: best model step is {best_ave_last_rewards_step} with value {best_ave_last_rewards}")
-        best_actor_dir_step = os.path.join(args.output_dir, os.path.join('actor', str(best_ave_last_rewards_step)))
-        best_actor_dir = os.path.join(args.output_dir, os.path.join('actor', "best"))
-        shutil.copytree(best_actor_dir_step, best_actor_dir)
-
-        best_critic_dir_step = os.path.join(args.output_dir, os.path.join('critic', str(best_ave_last_rewards)))
-        best_critic_dir = os.path.join(args.output_dir, os.path.join('critic', "best"))
-        shutil.copytree(best_critic_dir_step, best_critic_dir)
+    print_rank_0(f"Saving end model.", args.global_rank)
+    rlhf_engine.save_models(model_name="end")
+    print(f"Copying the best model from training: best model step is {best_ave_last_rewards_step} with value {best_ave_last_rewards}")
+    rlhf_engine.copy_models(model_name=str(best_ave_last_rewards_step))
 
 
 if __name__ == "__main__":

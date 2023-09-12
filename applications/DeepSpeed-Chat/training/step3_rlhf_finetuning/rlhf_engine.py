@@ -6,6 +6,7 @@ import os
 import time
 import torch
 import deepspeed
+import shutil
 from deepspeed.ops.adam import FusedAdam
 from deepspeed.ops.adam import DeepSpeedCPUAdam
 from transformers import AutoModelForCausalLM, get_scheduler
@@ -300,10 +301,11 @@ class DeepSpeedRLHFEngine():
         log_init("Reward", stime=stime)
         return reward_engine
 
-    def save_models(self, add_path=""):
+    def save_models(self, model_name=""):
         if self.args.output_dir is not None:
             self.actor = convert_lora_to_linear_layer(self.actor)
-            self.critic = convert_lora_to_linear_layer(self.critic)
+            if self.args.save_critic: self.critic = convert_lora_to_linear_layer(self.critic)
+            
             if self.args.enable_ema:
                 self.actor_ema = convert_lora_to_linear_layer(
                     self.actor_ema)
@@ -312,39 +314,59 @@ class DeepSpeedRLHFEngine():
                 save_hf_format(self.actor,
                             self.tokenizer,
                             self.args,
-                            sub_folder=os.path.join('actor', add_path))
-                save_hf_format(self.critic,
-                            self.tokenizer,
-                            self.args,
-                            sub_folder=os.path.join('critic', add_path))
+                            sub_folder=os.path.join('actor', model_name))
+                if self.args.save_critic:
+                    save_hf_format(self.critic,
+                                self.tokenizer,
+                                self.args,
+                                sub_folder=os.path.join('critic', model_name))
                 if self.args.enable_ema:
                     save_hf_format(self.actor_ema,
                                 self.tokenizer,
                                 self.args,
-                                sub_folder=os.path.join('actor_ema', add_path))
+                                sub_folder=os.path.join('actor_ema', model_name))
 
             if self.args.actor_zero_stage == 3:
                 save_zero_three_model(self.actor,
                                     global_rank=self.args.global_rank,
                                     save_dir=os.path.join(
-                                        self.args.output_dir, 'actor', add_path),
+                                        self.args.output_dir, 'actor', model_name),
                                     zero_stage=self.args.actor_zero_stage)
                 if self.args.enable_ema:
                     save_zero_three_model(self.actor_ema,
                                         global_rank=self.args.global_rank,
                                         save_dir=os.path.join(
-                                            self.args.output_dir, 'actor_ema', add_path),
+                                            self.args.output_dir, 'actor_ema', model_name),
                                         zero_stage=self.args.actor_zero_stage)
-            if self.args.critic_zero_stage == 3:
+            if self.args.critic_zero_stage == 3 and self.args.save_critic:
                 save_zero_three_model(self.critic,
                                     global_rank=self.args.global_rank,
                                     save_dir=os.path.join(
-                                        self.args.output_dir, 'critic', add_path),
+                                        self.args.output_dir, 'critic', model_name),
                                     zero_stage=self.args.critic_zero_stage)
 
 
             self.actor = unfuse_lora_linear_layer(self.actor)
-            self.critic = unfuse_lora_linear_layer(self.critic)
+            if self.args.save_critic: self.critic = unfuse_lora_linear_layer(self.critic)
+            
             if self.args.enable_ema:
                 self.actor_ema = unfuse_lora_linear_layer(
                     self.actor_ema)
+                
+    def copy_best_models(self, model_name):
+        best_actor_dir_step = os.path.join(self.args.output_dir, os.path.join('actor', model_name))
+        best_actor_dir = os.path.join(self.args.output_dir, os.path.join('actor', "best"))
+        shutil.copytree(best_actor_dir_step, best_actor_dir)
+
+        if self.args.save_critic:
+            best_critic_dir_step = os.path.join(self.args.output_dir, os.path.join('critic', model_name))
+            best_critic_dir = os.path.join(self.args.output_dir, os.path.join('critic', "best"))
+            shutil.copytree(best_critic_dir_step, best_critic_dir)
+
+    def remove_models(self, model_name=""):
+        if self.args.output_dir is not None and torch.distributed.get_rank() == 0:
+            shutil.rmtree(os.path.join(self.args.output_dir, 'actor', model_name)) 
+            if self.args.save_critic:
+                shutil.rmtree(os.path.join(self.args.output_dir, 'critic', model_name)) 
+            if self.args.enable_ema:
+                shutil.rmtree(os.path.join(self.args.output_dir, 'actor_ema', model_name)) 
