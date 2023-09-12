@@ -21,6 +21,7 @@ import os
 import random
 import time
 import torch
+import shutil
 from torch.utils.data import DataLoader, RandomSampler
 from torch.utils.data.distributed import DistributedSampler
 
@@ -39,8 +40,7 @@ import sys
 sys.path.append(
     os.path.abspath(os.path.join(os.path.dirname(__file__), os.path.pardir)))
 from utils.data.data_utils import create_prompt_dataset, MiniDataset, DataCollatorRLHF, get_unsupervised_data
-from utils.utils import print_rank_0, to_device, save_hf_format, set_random_seed, get_all_reduce_mean, moving_average, save_zero_three_model, load_hf_tokenizer, get_all_gather, AzureMLLogger
-from utils.module.lora import convert_lora_to_linear_layer
+from utils.utils import print_rank_0, to_device, set_random_seed, get_all_reduce_mean, moving_average, load_hf_tokenizer, get_all_gather, AzureMLLogger
 from utils.perf import print_throughput_step3
 
 writer = None
@@ -147,6 +147,27 @@ def parse_args():
         type=int,
         default=1,
         help="For generated data, how many ppo training epochs to run.")
+    parser.add_argument(
+        "--saves_per_training_run",
+        type=int,
+        default=10,
+        help="Save this many models regularly spaced throughout training, regardless of performance. Set to 0 for no  regularly spaced saving.")
+    parser.add_argument(
+        "--save_critic",
+        action='store_true',
+        help=
+        "Save the critic model as well as the actor when saving moels."
+    )
+    parser.add_argument(
+        "--save_improvement_threshold",
+        type=float,
+        default=.06,
+        help="During PPO, save if reward has improved by this percentage since the last save. Set to 0 for no improvement saving.")
+    parser.add_argument(
+        "--max_saved_models",
+        type=float,
+        default=0,
+        help="During PPO, keep a maximum of this many saved models. Only models with the highest reward are kept. Set to 0 for no limit.")
     parser.add_argument("--max_prompt_seq_len",
                         type=int,
                         default=256,
@@ -522,15 +543,6 @@ def main():
     # load_hf_tokenizer will get the correct tokenizer and set padding tokens based on the model family
     tokenizer = load_hf_tokenizer(args.actor_model_name_or_path,
                                   fast_tokenizer=True)
-    reward_tokenizer = load_hf_tokenizer(args.critic_model_name_or_path,
-                                            fast_tokenizer=True)
-    tokenizer_tokens = set(tokenizer.get_vocab().keys())
-    reward_tokenizer_tokens = set(reward_tokenizer.get_vocab().keys())
-
-    if tokenizer_tokens.isdisjoint(reward_tokenizer_tokens):
-        print_rank_0("Using different tokenizers for actor/reference and critic/reward model pairs.", args.global_rank)
-    else:
-        reward_tokenizer = None
         
     prompt_train_dataloader, unsupervised_train_dataloader, num_total_iters = create_datasets(
         args=args, tokenizer=tokenizer, train_phase=3)
@@ -540,7 +552,6 @@ def main():
         actor_model_name_or_path=args.actor_model_name_or_path,
         critic_model_name_or_path=args.critic_model_name_or_path,
         tokenizer=tokenizer,
-        reward_tokenizer=reward_tokenizer,
         num_total_iters=num_total_iters,
         args=args)
 
@@ -577,6 +588,21 @@ def main():
 
     non_overflow_step_count = 0
 
+    max_saved_models = args.max_saved_models
+
+    global_step = 0
+    last_rewards = []
+    best_ave_last_rewards = 0
+    best_ave_last_rewards_step = 0
+    saved_models = {}
+    
+    if args.saves_per_training_run == 0:
+        save_interval = 0
+    else:
+        save_interval = int((args.num_train_epochs * min(len(prompt_train_dataloader), len(unsupervised_train_dataloader))) / args.saves_per_training_run)
+
+    print_rank_0(f"Saving models every {save_interval} steps", args.global_rank)
+    
     for epoch in range(args.num_train_epochs):
         print_rank_0(
             f"Beginning of Epoch {epoch+1}/{args.num_train_epochs}, Total Generation Batches {min(len(prompt_train_dataloader), len(unsupervised_train_dataloader))}",
@@ -660,8 +686,7 @@ def main():
                     "-------------------------------------------------------------------------------------",
                     args.global_rank)
 
-                if args.enable_tensorboard and torch.distributed.get_rank(
-                ) == 0:
+                if args.enable_tensorboard and torch.distributed.get_rank() == 0:
                     writer.add_scalar('reward',
                                       average_reward / inner_iter,
                                       global_step=step)
@@ -678,6 +703,36 @@ def main():
                                       critic_loss_sum,
                                       global_step=step)
                     writer.flush()
+                    
+                global_step += 1
+                last_rewards.append(float(average_reward/inner_iter))
+                if len(last_rewards) > 10:
+                    last_rewards.pop(0)
+                    check_reward = sum(last_rewards) / len(last_rewards)
+
+                    save_model = False
+                    if (save_interval > 0 and global_step % save_interval == 0) or best_ave_last_rewards == 0:
+                        save_model = True
+                    elif args.save_improvement_threshold > 0:
+                        improvement = (check_reward - best_ave_last_rewards) / abs(best_ave_last_rewards)
+                        save_model = improvement >= args.save_improvement_threshold
+
+                    if save_model:
+                        print_rank_0(f"Previous best reward {check_reward}", args.global_rank)
+                        print_rank_0(f"Saving new best model at step {step} with ave reward {best_ave_last_rewards}", args.global_rank)
+
+                        best_ave_last_rewards = check_reward
+                        best_ave_last_rewards_step = step
+
+                        rlhf_engine.save_models(model_name=str(step))
+
+                        saved_models[step] = check_reward
+
+                        if max_saved_models > 0 and len(saved_models) > max_saved_models:
+                            worst_model = min(saved_models, key=saved_models.get)
+                            print_rank_0(f"Removing worst model at step {worst_model} with ave reward {saved_models[worst_model]}", args.global_rank)
+                            rlhf_engine.remove_models(model_name=str(worst_model))
+                            del saved_models[worst_model]
 
             if args.actor_gradient_checkpointing:
                 rlhf_engine.actor.gradient_checkpointing_disable()
@@ -693,47 +748,10 @@ def main():
         if args.enable_test_mode:
             break
 
-    if args.output_dir is not None:
-        print_rank_0('saving model ...')
-        rlhf_engine.actor = convert_lora_to_linear_layer(rlhf_engine.actor)
-        rlhf_engine.critic = convert_lora_to_linear_layer(rlhf_engine.critic)
-        if args.enable_ema:
-            rlhf_engine.actor_ema = convert_lora_to_linear_layer(
-                rlhf_engine.actor_ema)
-
-        if torch.distributed.get_rank() == 0:
-            save_hf_format(rlhf_engine.actor,
-                           tokenizer,
-                           args,
-                           sub_folder='actor')
-            save_hf_format(rlhf_engine.critic,
-                           tokenizer if reward_tokenizer is None else reward_tokenizer,
-                           args,
-                           sub_folder='critic')
-            if args.enable_ema:
-                save_hf_format(rlhf_engine.actor_ema,
-                               tokenizer,
-                               args,
-                               sub_folder='actor_ema')
-
-        if args.actor_zero_stage == 3:
-            save_zero_three_model(rlhf_engine.actor,
-                                  global_rank=args.global_rank,
-                                  save_dir=os.path.join(
-                                      args.output_dir, 'actor'),
-                                  zero_stage=args.actor_zero_stage)
-            if args.enable_ema:
-                save_zero_three_model(rlhf_engine.actor_ema,
-                                      global_rank=args.global_rank,
-                                      save_dir=os.path.join(
-                                          args.output_dir, 'actor_ema'),
-                                      zero_stage=args.actor_zero_stage)
-        if args.critic_zero_stage == 3:
-            save_zero_three_model(rlhf_engine.critic,
-                                  global_rank=args.global_rank,
-                                  save_dir=os.path.join(
-                                      args.output_dir, 'critic'),
-                                  zero_stage=args.critic_zero_stage)
+    print_rank_0(f"Saving end model.", args.global_rank)
+    rlhf_engine.save_models(model_name="end")
+    print(f"Copying the best model from training: best model step is {best_ave_last_rewards_step} with value {best_ave_last_rewards}")
+    rlhf_engine.copy_models(model_name=str(best_ave_last_rewards_step))
 
 
 if __name__ == "__main__":
