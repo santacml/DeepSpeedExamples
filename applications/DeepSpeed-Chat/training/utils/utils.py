@@ -52,7 +52,7 @@ class MultiLogger(Logger):
     def __init__(self, loggers):
         self.loggers = loggers
 
-    def log(self, name, value, step=None):
+    def _log(self, name, value, step=None):
         for logger in self.loggers:
             logger.log(name, value, step=None)
 
