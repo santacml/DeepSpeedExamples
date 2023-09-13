@@ -8,6 +8,7 @@ import torch
 from transformers import (
     AutoConfig,
     AutoModel,
+    AutoModelForSequenceClassification,
 )
 from huggingface_hub import snapshot_download
 from transformers.deepspeed import HfDeepSpeedConfig
@@ -67,6 +68,10 @@ def create_critic_model(model_name_or_path,
     end = time.time()
     if torch.distributed.get_rank() == 0:
         print(f"> Creating model from_config took {end - start} seconds")
+    
+    if isinstance(critic_model, AutoModelForSequenceClassification):
+        if isinstance(critic_model, GPTNeoXRewardModel):
+            critic_model = critic_model.gpt_neox
 
     critic_model = RewardModel(
         critic_model,

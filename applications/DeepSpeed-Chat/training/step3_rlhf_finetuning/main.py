@@ -568,7 +568,18 @@ def main():
     # load_hf_tokenizer will get the correct tokenizer and set padding tokens based on the model family
     tokenizer = load_hf_tokenizer(args.actor_model_name_or_path,
                                   fast_tokenizer=True)
+    
+    reward_tokenizer = None
+    if args.reward_model_name_or_path:
+        print_rank_0("Loading reward tokenizer from", args.reward_model_name_or_path, args.global_rank)
+        reward_tokenizer = load_hf_tokenizer(args.reward_model_name_or_path,
+                                                fast_tokenizer=True)
         
+        if type(tokenizer) != type(reward_tokenizer):
+            print_rank_0("Reward tokenizer is different from actor tokenizer. Using separat reward model tokenizer mode.", args.global_rank)
+        else:
+            reward_tokenizer = None
+
     prompt_train_dataloader, unsupervised_train_dataloader, num_total_iters = create_datasets(
         args=args, tokenizer=tokenizer, train_phase=3)
 
@@ -577,6 +588,7 @@ def main():
         actor_model_name_or_path=args.actor_model_name_or_path,
         critic_model_name_or_path=args.critic_model_name_or_path,
         tokenizer=tokenizer,
+        reward_tokenizer=reward_tokenizer,
         num_total_iters=num_total_iters,
         args=args)
 
