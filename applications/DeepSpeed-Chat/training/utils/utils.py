@@ -12,21 +12,50 @@ import deepspeed
 from deepspeed.runtime.zero.partition_parameters import ZeroParamStatus
 import torch.nn as nn
 
-class AzureMLLogger(object):
-    def __init__(self, args):
-        self.rank = args.global_rank
-        self.run = None
+# These loggers should be moved into a separate file post-refactor.
 
-        try:
-            from azureml.core.run import Run
-            azureml_run = Run.get_context()
-            self.run = azureml_run
-        except ImportError:
-            azureml_run = None
+class Logger(object):
+    def __init__(self, rank):
+        self.rank = rank
     
-    def log(self, name, value):
-        if self.run is not None and self.rank == 0:
-            self.run.log(name, value, description=name)
+    def log(self, name, value, step=None):
+        if self.rank == 0:
+            self._log(name, value, step=step)
+    
+    def _log(self, name, value, step=None):
+        # inherit this class and implement this function
+        raise NotImplementedError
+
+class AzureMLLogger(Logger):
+    def __init__(self, rank):
+        super().__init__(rank)
+
+        from azureml.core.run import Run
+        azureml_run = Run.get_context()
+        self.run = azureml_run
+    
+    def _log(self, name, value, step=None):
+        self.run.log(name, value, description=name)
+
+class TensorBoardLogger(Logger):
+    def __init__(self, rank, path):
+        super().__init__(rank)
+        
+        from torch.utils.tensorboard import SummaryWriter
+        self.writer = SummaryWriter(path)
+
+    def _log(self, name, value, step=None):
+        self.writer.add_scalar(name, value, step)
+        self.writer.flush()
+
+class MultiLogger(Logger):
+    def __init__(self, loggers):
+        self.loggers = loggers
+
+    def log(self, name, value, step=None):
+        for logger in self.loggers:
+            logger.log(name, value, step=None)
+
 
 def print_rank_0(msg, rank=0):
     if rank <= 0:

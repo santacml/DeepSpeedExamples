@@ -40,7 +40,7 @@ import sys
 sys.path.append(
     os.path.abspath(os.path.join(os.path.dirname(__file__), os.path.pardir)))
 from utils.data.data_utils import create_prompt_dataset, MiniDataset, DataCollatorRLHF, get_unsupervised_data
-from utils.utils import print_rank_0, to_device, set_random_seed, get_all_reduce_mean, moving_average, load_hf_tokenizer, get_all_gather, AzureMLLogger
+from utils.utils import print_rank_0, to_device, set_random_seed, get_all_reduce_mean, moving_average, load_hf_tokenizer, get_all_gather, AzureMLLogger, TensorBoardLogger, MultiLogger
 from utils.perf import print_throughput_step3
 
 writer = None
@@ -361,6 +361,10 @@ def parse_args():
     parser.add_argument('--tensorboard_path',
                         type=str,
                         default="step3_tensorboard")
+    ## AzureML logging
+    parser.add_argument('--enable_azureml_logging',
+                        action='store_true',
+                        help='Enable AzureML logging')
     ## Actor/critic model overflow alignment
     parser.add_argument(
         '--align_overflow',
@@ -387,14 +391,6 @@ def parse_args():
 
     parser = deepspeed.add_config_arguments(parser)
     args = parser.parse_args()
-
-    if args.enable_tensorboard:
-        from torch.utils.tensorboard import SummaryWriter
-        print(
-            f"Tensorboard logs going to: {args.tensorboard_path}/step3_tensorboard_logs"
-        )
-        writer = SummaryWriter(
-            f"{args.tensorboard_path}/step3_tensorboard_logs")
 
     # Validate settings
     if args.inference_tp_size > 1:
@@ -527,7 +523,16 @@ def main():
 
     args.global_rank = torch.distributed.get_rank()
 
-    azureml_logger = AzureMLLogger(args)
+    loggers = []
+
+    if args.enable_tensorboard:
+        path = f"{args.tensorboard_path}/step3_tensorboard_logs"
+        print(f"Tensorboard logs going to: {path}")
+        loggers.append(TensorBoardLogger(args.global_rank, path))
+    if args.enable_azureml_logging:
+        loggers.append(AzureMLLogger(args.global_rank))
+
+    logger = MultiLogger(loggers)
 
     unsupervised_training_enabled = args.unsupervised_dataset_name and args.unsupervised_dataset_config_name
     if unsupervised_training_enabled:
@@ -674,35 +679,17 @@ def main():
                                        trainer.generate_time, training_time,
                                        args.global_rank)
                 average_reward = get_all_reduce_mean(average_reward).item()
-                azureml_logger.log("reward", float(average_reward / inner_iter))
-                azureml_logger.log("actor_loss", float(actor_loss))
-                azureml_logger.log("actor_loss_sum", float(actor_loss_sum))
-                azureml_logger.log("critic_loss", float(critic_loss))
-                azureml_logger.log("critic_loss_sum", float(critic_loss_sum))
+                logger.log("reward", float(average_reward / inner_iter))
+                logger.log("actor_loss", float(actor_loss))
+                logger.log("actor_loss_sum", float(actor_loss_sum))
+                logger.log("critic_loss", float(critic_loss))
+                logger.log("critic_loss_sum", float(critic_loss_sum))
                 print_rank_0(
                     f"Average reward score: {average_reward/inner_iter}",
                     args.global_rank)
                 print_rank_0(
                     "-------------------------------------------------------------------------------------",
                     args.global_rank)
-
-                if args.enable_tensorboard and torch.distributed.get_rank() == 0:
-                    writer.add_scalar('reward',
-                                      average_reward / inner_iter,
-                                      global_step=step)
-                    writer.add_scalar('actor_loss',
-                                      actor_loss,
-                                      global_step=step)
-                    writer.add_scalar('actor_loss_sum',
-                                      actor_loss_sum,
-                                      global_step=step)
-                    writer.add_scalar('critic_loss',
-                                      critic_loss,
-                                      global_step=step)
-                    writer.add_scalar('critic_loss_sum',
-                                      critic_loss_sum,
-                                      global_step=step)
-                    writer.flush()
                     
                 global_step += 1
                 last_rewards.append(float(average_reward/inner_iter))
