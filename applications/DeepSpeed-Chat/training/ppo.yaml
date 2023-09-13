@@ -183,11 +183,6 @@ inputs:
     optional: true
     default: ""
     type: string
-  normalize_rm_scale: 
-    description: normalize_rm_scale
-    optional: true
-    default:  0.0
-    type: float
   exact_reward_function:
     description: Use exact reward
     optional: true
@@ -238,10 +233,11 @@ launcher:
       --critic_lora_dim {inputs.critic_lora_dim} 
       --critic_lora_module_name {inputs.critic_lora_module_name} 
       [--stop_token {inputs.stop_token}]
-      [--normalize_rm_scale {inputs.normalize_rm_scale}]
+      --normalize_rm
       --disable_actor_dropout
       --only_optimize_lora
       --deepspeed 
+      --enable_azureml_logging
       [--inference_tp_size {inputs.inference_tp_size}]
       [--tp_gather_partition_size {inputs.tp_gather_partition_size}]
       [--exact_reward_function {inputs.exact_reward_function}]
