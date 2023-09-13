@@ -118,6 +118,20 @@ def parse_args():
         required=False,
     )
     parser.add_argument(
+        "--reward_model_name_or_path",
+        type=str,
+        help=
+        "Path to pretrained model or model identifier from huggingface.co/models. Leave blank to initialize RM from critic.",
+        required=False,
+    )
+    parser.add_argument(
+        "--reward_model_dir",
+        type=str,
+        help=
+        "Directory location of model (joined with model_name_or_path). Leave blank to initialize RM from critic.",
+        required=False,
+    )
+    parser.add_argument(
         "--num_padding_at_beginning",
         type=int,
         default=1,
@@ -423,6 +437,14 @@ def parse_args():
             args.critic_model_name_or_path = critic_model_path
         else:
             args.critic_model_name_or_path = args.critic_model_dir
+
+    if args.reward_model_dir:
+        if args.reward_model_name_or_path:
+            reward_model_path = os.path.join(args.reward_model_dir, args.reward_model_name_or_path)
+            assert os.path.exists(reward_model_path), f"model_path {reward_model_path} does not exist"
+            args.reward_model_name_or_path = reward_model_path
+        else:
+            args.reward_model_name_or_path = args.reward_model_dir
 
     return args
 

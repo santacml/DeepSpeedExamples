@@ -89,13 +89,13 @@ inputs:
     optional: false
     default: 256
     type: int
-  actor_learning_rate: 
-    description: actor_learning_rate
+  actor_lora_learning_rate: 
+    description: actor_lora_learning_rate
     optional: false
     default:  1e-4
     type: float
-  critic_learning_rate: 
-    description: critic_learning_rate
+  critic_lora_learning_rate: 
+    description: critic_lora_learning_rate
     optional: false
     default:  1e-4
     type: float
@@ -222,8 +222,8 @@ launcher:
       --ppo_epochs {inputs.ppo_epochs}   
       --max_answer_seq_len {inputs.max_answer_seq_len}  
       --max_prompt_seq_len {inputs.max_prompt_seq_len}  
-      --actor_learning_rate {inputs.actor_learning_rate}  
-      --critic_learning_rate {inputs.critic_learning_rate}  
+      --actor_lora_learning_rate {inputs.actor_lora_learning_rate}  
+      --critic_lora_learning_rate {inputs.critic_lora_learning_rate}  
       --actor_weight_decay {inputs.actor_weight_decay}  
       --critic_weight_decay {inputs.critic_weight_decay}  
       --num_train_epochs {inputs.num_train_epochs}

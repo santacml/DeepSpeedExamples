@@ -61,13 +61,17 @@ def get_info(cluster):
 
 def main():
     # model = "opt_1.3b"
-    model = "llama_2_7b"
-    TASK = "Dahoas/rm-static"
+    # model = "llama_2_7b"
+    model = "sep_rm"
+    model = "pythia_reward"
+
+    # TASK = "Dahoas/rm-static"
+    TASK = "sep_rm"
 
 
     
     timestamp = datetime.datetime.fromtimestamp(time.time()).strftime('%Y-%m-%d-%H%M%S')
-    output_path = f'misantac_oss_rlhf_v2/logs-{timestamp}'
+    output_path = f'misantac_oss_rlhf/sep_rm/logs-{timestamp}'
 
     ppo_baseline_input = None
     rm_model_weights_input = None
@@ -101,29 +105,28 @@ def main():
     
     # data_split="3,3,4"
 
+    model_name_or_path = None
+
+    reward_model_dir = None
+    reward_model_name_or_path = None
 
 
-    if TASK == "Dahoas/rm-static":
+    if TASK == "sep_rm":
         # default_compute_target, ws, ds, process_count_per_node = get_info("tscience")
         
         default_compute_target, ws, ds, process_count_per_node = get_info("tscience-2")
         instance_count = 2
 
-        all_datasets_path =  "Dahoas/rm-static"
-        
+        all_datasets_path =  Dataset.File.from_files(path=[(ds, "misantac_oss_rlhf/sep_rm/alpaca_processed")],validate=True).as_mount()
+
 
         per_device_train_batch_size = 2
         per_device_eval_batch_size = 4
         
         gradient_accumulation_steps=1
-
-        # using lora
-        # sft_lora = 128
-        # sft_e = 5
-        # sft_lr = 1e-4
         
         sft_lora = 0
-        sft_e = 1
+        sft_e = 5
         sft_lr = 1e-6
 
         # rm_e = 5
@@ -136,36 +139,61 @@ def main():
 
         ppo_per_device_train_batch_size = 1
         per_device_mini_train_batch_size= 2 
-        ppo_gradient_accumulation_steps=20
+        # ppo_gradient_accumulation_steps=20
+        ppo_gradient_accumulation_steps=30
     
     
-        actor_learning_rate=5e-4
-        critic_learning_rate=5e-5
         
+        actor_lora_learning_rate=5e-4
+        critic_lora_learning_rate=5e-4
         
         max_prompt_seq_len = 256
         max_answer_seq_len = 256
 
         # '''
         
-    if model == "opt_1.3b":
-        model_weights = None
-        num_padding_at_beginning = 0
-        
-        model_dir = None
-        model_name_or_path = "facebook/opt-1.3b"
-        
-    elif model == "llama_2_7b":
-        model_weights = None
-        num_padding_at_beginning = 0
 
-        model_dir = Dataset.File.from_files(path=[(ds, "llama-2/Llama-2-7b-hf/")],validate=True).as_mount()
-        # model_dir = Dataset.File.from_files(path=[(ds, "llama-2/")],validate=True).as_mount()
-        # model_name_or_path = "Llama-2-7b-hf"
-        model_name_or_path = ""
+        if model == "opt_1.3b":
+            model_weights = None
+            num_padding_at_beginning = 0
+            
+            model_dir = None
+            model_name_or_path = "facebook/opt-1.3b"
+            
+        elif model == "llama_2_7b":
+            model_weights = None
+            num_padding_at_beginning = 0
 
-    else:
-        0/0
+            model_dir = Dataset.File.from_files(path=[(ds, "llama-2/Llama-2-7b-hf/")],validate=True).as_mount()
+            # model_dir = Dataset.File.from_files(path=[(ds, "llama-2/")],validate=True).as_mount()
+            # model_name_or_path = "Llama-2-7b-hf"
+            model_name_or_path = ""
+
+        elif model == "sep_rm":
+            model_weights = None
+            num_padding_at_beginning = 0
+            sft_model_weights_input = Dataset.File.from_files(path=[(ds, "misantac_oss_rlhf/sep_rm/logs-2023-09-10-121323/sft")],validate=True).as_mount()
+            rm_model_weights_input = Dataset.File.from_files(path=[(ds, "misantac_oss_rlhf/sep_rm/rlhf-reward-v10-DistillGPT4PreferencesV2-bs64-llama2-7b-noMath-combinedAxioms0-5/checkpoint-16000_automodel/")],validate=True).as_mount()
+            
+            model_dir = Dataset.File.from_files(path=[(ds, "llama-2/Llama-2-7b-hf/")],validate=True).as_mount()
+
+        elif model == "pythia_reward":
+
+            
+            model_weights = None
+            num_padding_at_beginning = 0
+            sft_model_weights_input = Dataset.File.from_files(path=[(ds, "misantac_oss_rlhf/sep_rm/logs-2023-09-10-121323/sft")],validate=True).as_mount()
+            # rm_model_weights_input = Dataset.File.from_files(path=[(ds, "misantac_oss_rlhf/sep_rm/rlhf-reward-v10-DistillGPT4PreferencesV2-bs64-llama2-7b-noMath-combinedAxioms0-5/checkpoint-16000_automodel/")],validate=True).as_mount()
+
+            rm_model_weights_input = None
+
+            reward_model_name_or_path =  "OpenAssistant/oasst-rm-2-pythia-6.9b-epoch-1"
+            
+            model_dir = Dataset.File.from_files(path=[(ds, "llama-2/Llama-2-7b-hf/")],validate=True).as_mount()
+
+
+        else:
+            0/0
 
         
     ppo_instance_count = instance_count
@@ -194,13 +222,13 @@ def main():
 
 
     
-    if per_device_train_batch_size > 1 and instance_count == 2:
-        print("adjusting rm batch for 2 instances")
-        rm_per_device_train_batch_size = int(per_device_train_batch_size/2)
-        per_device_eval_batch_size = int(per_device_eval_batch_size/2)
-        rm_gradient_accumulation_steps = int(rm_gradient_accumulation_steps*2)
-    else:
-        rm_per_device_train_batch_size = per_device_train_batch_size
+    # if per_device_train_batch_size > 1 and instance_count == 2:
+    #     print("adjusting rm batch for 2 instances")
+    #     rm_per_device_train_batch_size = int(per_device_train_batch_size/2)
+    #     per_device_eval_batch_size = int(per_device_eval_batch_size/2)
+    #     rm_gradient_accumulation_steps = int(rm_gradient_accumulation_steps*2)
+    # else:
+    #     rm_per_device_train_batch_size = per_device_train_batch_size
 
     @dsl.pipeline(
         name=f"{timestamp} {TASK} {model}",
@@ -214,7 +242,7 @@ def main():
             trainer = train_func(
                 data_path=all_datasets_path,
                 # data_split=data_split,
-                data_split="4,2,4",
+                data_split="1,0,0",
                 model_dir=model_dir,
                 model_name_or_path=model_name_or_path,
                 per_device_train_batch_size=per_device_train_batch_size,
@@ -247,12 +275,12 @@ def main():
         # '''
 
         # '''
-        if rm_model_weights_input is None:
+        if rm_model_weights_input is None and reward_model_name_or_path is None:
             rm_per_device_train_batch_size = per_device_train_batch_size    
 
             rm_trainer = rm_train_func(
                 data_path=all_datasets_path,
-                data_split=data_split,
+                data_split="0,1,0",
                 model_dir=model_dir,
                 model_name_or_path=model_name_or_path,
                 per_device_train_batch_size=rm_per_device_train_batch_size,
@@ -282,6 +310,8 @@ def main():
         else:
             rm_model_weights = rm_model_weights_input
 
+            
+
         # '''
 
         # ''' reg lora ppo
@@ -289,15 +319,16 @@ def main():
         if ppo_baseline_input is None:
             ppo = ppo_func(
                 data_path=all_datasets_path,
-                data_split=data_split,
-                # actor_model_dir=model_dir,
-                # actor_model_name_or_path=model_name_or_path,
-                # critic_model_dir=model_dir,
-                # critic_model_name_or_path=model_name_or_path,
+                data_split="0,0,1",
+
                 actor_model_dir=sft_model_weights,
                 actor_model_name_or_path=None,
                 critic_model_dir=rm_model_weights,
                 critic_model_name_or_path=None,
+
+                reward_model_dir = None,
+                reward_model_name_or_path = reward_model_name_or_path,
+                
                 num_padding_at_beginning=num_padding_at_beginning,
                 per_device_generation_batch_size=per_device_train_batch_size,
                 per_device_training_batch_size=per_device_mini_train_batch_size,
@@ -306,8 +337,8 @@ def main():
                 max_answer_seq_len=max_answer_seq_len,
                 max_prompt_seq_len=max_prompt_seq_len,
 
-                actor_learning_rate=actor_learning_rate,
-                critic_learning_rate=critic_learning_rate,
+                actor_lora_learning_rate=actor_lora_learning_rate,
+                critic_lora_learning_rate=critic_lora_learning_rate,
 
                 actor_weight_decay=0,
                 critic_weight_decay=0,
@@ -319,8 +350,6 @@ def main():
                 gradient_accumulation_steps=ppo_gradient_accumulation_steps,
                 num_warmup_steps=100,
                 seed=42,
-                # actor_zero_stage="3",
-                # critic_zero_stage="3",
                 actor_zero_stage=ppo_zero_stage,
                 critic_zero_stage=ppo_zero_stage,
                 actor_lora_dim=128,
@@ -328,8 +357,6 @@ def main():
                 critic_lora_dim=128,
                 critic_lora_module_name=lora_module_name,
 
-
-                # save_strategy="reward"
             )
 
             ppo.runsettings.resource_layout.configure(instance_count=ppo_instance_count, process_count_per_node=process_count_per_node)
@@ -341,30 +368,15 @@ def main():
             )
             
 
-            # eval_ppo = eval_func(
-            #     model_path_baseline=sft_model_weights,
-            #     model_name_or_path_finetune=ppo.outputs.output_dir,
-            #     num_padding_at_beginning=num_padding_at_beginning,
-            #     reward_model_path=rm_model_weights,
-            #     max_new_tokens=max_answer_seq_len,
-            #     data_path = all_datasets_path,
-            # )
-            # eval_ppo.runsettings.resource_layout.configure(instance_count=1, process_count_per_node=1)
-            # eval_ppo.outputs.baseline_output_dir.configure( mode="mount", path_on_datastore=output_path + "/sft", datastore=ds)
-            # eval_ppo.outputs.finetune_output_dir.configure( mode="mount", path_on_datastore=output_path + "/ppo/actor/best", datastore=ds)
-
             ppo_baseline = ppo.outputs.output_dir
         else:
             ppo_baseline = ppo_baseline_input
 
         # '''
 
-
-
-
     pipeline = train_pipeline()
     _ = pipeline.submit(
-        experiment_name="misantac_oss_rlhf_v2",
+        experiment_name="misantac_oss_rlhf_sep_rm",
         # continue_on_step_failure=True,
     )
 
