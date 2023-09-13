@@ -72,13 +72,16 @@ def create_critic_model(model_name_or_path,
     critic_model = base_critic_model
     print("Loaded critic model as type", type(base_critic_model))
 
+    v_head_weights = None
     if isinstance(base_critic_model, GPTNeoXRewardModel):
         critic_model = base_critic_model.gpt_neox
+        v_head_weights = base_critic_model.out_proj
 
     critic_model = RewardModel(
         critic_model,
         tokenizer,
-        num_padding_at_beginning=num_padding_at_beginning)
+        num_padding_at_beginning=num_padding_at_beginning,
+        v_head_weights=v_head_weights)
 
     if rlhf_training:
         if not os.path.isdir(model_name_or_path):

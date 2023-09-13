@@ -10,7 +10,7 @@ from torch import nn
 ## https://github.com/CarperAI/trlx/blob/main/examples/summarize_rlhf/reward_model/reward_model.py
 class RewardModel(nn.Module):
 
-    def __init__(self, base_model, tokenizer, num_padding_at_beginning=0):
+    def __init__(self, base_model, tokenizer, num_padding_at_beginning=0, v_head_weights = None):
         super().__init__()
         self.config = base_model.config
         self.num_padding_at_beginning = num_padding_at_beginning
@@ -34,6 +34,11 @@ class RewardModel(nn.Module):
         self.register_buffer("scale", scale)
 
         self.bias_scale_set = False
+
+        
+        if v_head_weights is not None:
+            with torch.no_grad():
+                self.v_head.weight[:] = base_model.out_proj.weight[:]
 
     def set_bias_scale(self, bias, scale):
         self.bias[:] = bias
