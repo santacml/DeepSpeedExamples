@@ -220,10 +220,9 @@ def parse_args():
         type=int,
         default=100,
         help="Number of steps for the warmup in the lr scheduler.")
-    parser.add_argument("--normalize_rm_scale",
-                        type=float,
-                        default=0,
-                        help="If this value is nonzero, the Reward Model will be normalized to this scale before PPO begins.")
+    parser.add_argument("--normalize_rm",
+                        action='store_true',
+                        help="Enable normalizing the RM between (-1, 1) on the actor's outputs before training begins.")
     parser.add_argument("--normalize_rm_samples",
                         type=float,
                         default=200,
@@ -471,7 +470,6 @@ def create_datasets(args, tokenizer, train_phase=3):
 
 @torch.no_grad()
 def evaluation_reward_normalization(args, trainer, prompt_train_dataloader, device):
-    normalize_rm_scale = args.normalize_rm_scale
     normalize_rm_samples = args.normalize_rm_samples
 
     reward_model = trainer.reward_model
@@ -499,7 +497,7 @@ def evaluation_reward_normalization(args, trainer, prompt_train_dataloader, devi
     all_scores_mean = all_scores.mean().item()
 
     bias = -all_scores_mean
-    scale = 1.0 / (normalize_rm_scale * all_scores.std() + 1e-9)
+    scale = 1.0 / (1.0 * all_scores.std() + 1e-9)
 
     return bias, scale
 
@@ -572,7 +570,7 @@ def main():
     ppo_trainer = DeepSpeedPPOTrainerUnsupervised if unsupervised_training_enabled else DeepSpeedPPOTrainer
     trainer = ppo_trainer(rlhf_engine, args)
     
-    if args.normalize_rm_scale > 0 :
+    if args.normalize_rm :
         print_rank_0("***** Running RM Normalization*****", args.global_rank)
         bias, scale = evaluation_reward_normalization(args, trainer, prompt_train_dataloader, device)
 
