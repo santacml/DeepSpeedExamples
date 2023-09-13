@@ -13,7 +13,7 @@ from transformers import (
 from huggingface_hub import snapshot_download
 from transformers.deepspeed import HfDeepSpeedConfig
 
-from .reward_model import RewardModel
+from .reward_model import RewardModel, GPTNeoXRewardModel
 from ..utils import load_state_dict_into_model
 
 
@@ -21,7 +21,7 @@ def create_hf_model(model_class,
                     model_name_or_path,
                     tokenizer,
                     ds_config=None,
-                    rlhf_training=False,
+                    config_only=False,
                     disable_dropout=False):
     model_config = AutoConfig.from_pretrained(model_name_or_path)
     if disable_dropout:
@@ -32,7 +32,7 @@ def create_hf_model(model_class,
         dschf = HfDeepSpeedConfig(ds_config)
     else:
         dschf = None
-    if rlhf_training:
+    if config_only:
         # the weight loading is handled by create critic model
         model = model_class.from_config(model_config)
     else:
@@ -63,15 +63,17 @@ def create_critic_model(model_name_or_path,
     import time
 
     start = time.time()
-    critic_model = create_hf_model(AutoModel, model_name_or_path, tokenizer,
+    base_critic_model = create_hf_model(AutoModel, model_name_or_path, tokenizer,
                                    ds_config, rlhf_training, disable_dropout)
     end = time.time()
     if torch.distributed.get_rank() == 0:
         print(f"> Creating model from_config took {end - start} seconds")
     
-    if isinstance(critic_model, AutoModelForSequenceClassification):
-        if isinstance(critic_model, GPTNeoXRewardModel):
-            critic_model = critic_model.gpt_neox
+    critic_model = base_critic_model
+    print("Loaded critic model as type", type(base_critic_model))
+
+    if isinstance(base_critic_model, GPTNeoXRewardModel):
+        critic_model = base_critic_model.gpt_neox
 
     critic_model = RewardModel(
         critic_model,
@@ -79,20 +81,32 @@ def create_critic_model(model_name_or_path,
         num_padding_at_beginning=num_padding_at_beginning)
 
     if rlhf_training:
-        # load critic model from checkpoint
-
         if not os.path.isdir(model_name_or_path):
-            model_name_or_path = snapshot_download(model_name_or_path)
-        model_ckpt_path = os.path.join(model_name_or_path, 'pytorch_model.bin')
-        assert os.path.exists(
-            model_ckpt_path
-        ), f"Cannot find model checkpoint at {model_ckpt_path}"
+            # we don't know if the model is in one file or multiple files, so we must download from hf hub
+            start = time.time()
+            model = AutoModel.from_pretrained(model_name_or_path)
+            model_ckpt_state_dict = model.state_dict()
+            end = time.time()
+            if torch.distributed.get_rank() == 0:
+                print(f"> model download took {end - start} seconds")
 
-        start = time.time()
-        model_ckpt_state_dict = torch.load(model_ckpt_path, map_location='cpu')
-        end = time.time()
-        if torch.distributed.get_rank() == 0:
-            print(f"> torch.load took {end - start} seconds")
+            if isinstance(base_critic_model, GPTNeoXRewardModel):
+                model_ckpt_state_dict = fix_state_dict_keys(model_ckpt_state_dict)
+
+        else:
+            # load critic model from checkpoint
+            model_ckpt_path = os.path.join(model_name_or_path, 'pytorch_model.bin')
+            assert os.path.exists(
+                model_ckpt_path
+            ), f"Cannot find model checkpoint at {model_ckpt_path}"
+
+            start = time.time()
+            model_ckpt_state_dict = torch.load(model_ckpt_path, map_location='cpu')
+            end = time.time()
+            if torch.distributed.get_rank() == 0:
+                print(f"> torch.load took {end - start} seconds")
+
+        
 
         # load critic model from checkpoint with zero-stage 3 compatibility
         # this functionality may be moved to DS checkpoint load API in future
@@ -106,3 +120,27 @@ def create_critic_model(model_name_or_path,
             print(f"> Loading model state dict took {end - start} seconds")
 
     return critic_model
+
+
+
+def fix_state_dict_keys(model_ckpt_state_dict):
+        print("model_ckpt_state_dict keys", model_ckpt_state_dict.keys())
+
+        new_state_dict = {}
+
+        for key in model_ckpt_state_dict.keys():
+            if "model" in key:
+                new_state_dict[key.replace("model", "rwtranrsformer")] = model_ckpt_state_dict[key]
+            elif "gpt_neox" in key:
+                new_state_dict[key.replace("gpt_neox", "rwtranrsformer")] = model_ckpt_state_dict[key]
+            elif "score" in key:
+                new_state_dict[key.replace("score", "v_head")] = model_ckpt_state_dict[key]
+            elif "out_proj" in key:
+                new_state_dict[key.replace("out_proj", "v_head")] = model_ckpt_state_dict[key]
+            else:
+                new_state_dict[key] = model_ckpt_state_dict[key]
+
+        print("new state dict keys", new_state_dict.keys())
+        model_ckpt_state_dict = new_state_dict
+        
+        return model_ckpt_state_dict
