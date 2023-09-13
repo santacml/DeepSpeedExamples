@@ -76,7 +76,6 @@ def main():
     ## global params
     sft_model_name = None
     rm_model_name = None
-    normalize_rm_scale = 1.0
     num_padding_at_beginning=0
     sft_wd = .1
     rm_wd = .1
@@ -311,8 +310,6 @@ def main():
 
                 actor_weight_decay=0,
                 critic_weight_decay=0,
-
-                normalize_rm_scale=normalize_rm_scale,
 
                 num_train_epochs=1,
                 lr_scheduler_type="cosine",
