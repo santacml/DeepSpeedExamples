@@ -333,7 +333,22 @@ class DeepSpeedPPOTrainer():
 
         self.critic_model.step()
 
-        return actor_loss, critic_loss
+        # calculate EV
+        predicted = value[:, start:]
+        target = returns 
+        try:
+            err = target - predicted
+            var_target = float(target.var())
+            var_err = float(err.var())
+            if var_target == 0:
+                explained_variance = float("nan")
+            else:
+                explained_variance = 1.0 - var_err / var_target
+        except:
+            explained_variance = 0.0
+
+        return actor_loss, critic_loss, explained_variance
+
 
     def get_overflow(self):
         actor_overflow = self.actor_model.optimizer.overflow

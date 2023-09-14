@@ -681,7 +681,13 @@ def main():
                 for ppo_ep in range(args.ppo_epochs):
                     for i, (exp_data, unsup_data) in enumerate(
                             zip(exp_dataset, unsup_dataset)):
-                        actor_loss, critic_loss = trainer.train_rlhf(exp_data)
+                        actor_loss, critic_loss, explained_variance = trainer.train_rlhf(exp_data)
+                        if args.global_rank == 0:
+                            if explained_variance > 1:
+                                explained_variance = 1
+                            elif explained_variance < -1:
+                                explained_variance = -1
+                            logger.log("explained_variance", float(explained_variance))
                         actor_loss_sum += actor_loss.item()
                         critic_loss_sum += critic_loss.item()
                         average_reward += exp_data["rewards"].mean()
