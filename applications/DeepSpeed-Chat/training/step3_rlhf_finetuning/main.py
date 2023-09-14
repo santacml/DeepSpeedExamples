@@ -552,7 +552,7 @@ def main():
     if args.enable_azureml_logging:
         loggers.append(AzureMLLogger(args.global_rank))
 
-    logger = MultiLogger(loggers)
+    logger = MultiLogger(args.global_rank, loggers)
 
     unsupervised_training_enabled = args.unsupervised_dataset_name and args.unsupervised_dataset_config_name
     if unsupervised_training_enabled:
@@ -571,12 +571,12 @@ def main():
     
     reward_tokenizer = None
     if args.reward_model_name_or_path:
-        print_rank_0("Loading reward tokenizer from", args.reward_model_name_or_path, args.global_rank)
+        print_rank_0("Loading reward tokenizer from", args.global_rank)
         reward_tokenizer = load_hf_tokenizer(args.reward_model_name_or_path,
                                                 fast_tokenizer=True)
         
         if type(tokenizer) != type(reward_tokenizer):
-            print_rank_0("Reward tokenizer is different from actor tokenizer. Using separat reward model tokenizer mode.", args.global_rank)
+            print_rank_0("Reward tokenizer is different from actor tokenizer. Using separate reward model tokenizer mode.", args.global_rank)
         else:
             reward_tokenizer = None
 
@@ -587,6 +587,7 @@ def main():
     rlhf_engine = DeepSpeedRLHFEngine(
         actor_model_name_or_path=args.actor_model_name_or_path,
         critic_model_name_or_path=args.critic_model_name_or_path,
+        reward_model_name_or_path=args.reward_model_name_or_path,
         tokenizer=tokenizer,
         reward_tokenizer=reward_tokenizer,
         num_total_iters=num_total_iters,

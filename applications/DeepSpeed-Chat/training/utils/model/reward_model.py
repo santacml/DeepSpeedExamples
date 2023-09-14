@@ -38,7 +38,7 @@ class RewardModel(nn.Module):
         
         if v_head_weights is not None:
             with torch.no_grad():
-                self.v_head.weight[:] = base_model.out_proj.weight[:]
+                self.v_head.weight[:] = v_head_weights[:]
 
     def set_bias_scale(self, bias, scale):
         self.bias[:] = bias

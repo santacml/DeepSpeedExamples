@@ -30,7 +30,7 @@ inputs:
   data_path: 
     description: Training dataset
     optional: false
-    type: string
+    type: path
   data_split:
     description: Comma-separated list of proportions for training
     optional: false
@@ -50,6 +50,15 @@ inputs:
     optional: true
     type: string
   critic_model_dir: 
+    description: Model dir 
+    optional: true
+    default: ""
+    type: path
+  reward_model_name_or_path: 
+    description: Model path
+    optional: true
+    type: string
+  reward_model_dir: 
     description: Model dir 
     optional: true
     default: ""
@@ -210,6 +219,8 @@ launcher:
       [--actor_model_dir {inputs.actor_model_dir} ]
       [--critic_model_name_or_path {inputs.critic_model_name_or_path}]
       [--critic_model_dir {inputs.critic_model_dir} ]
+      [--reward_model_name_or_path {inputs.reward_model_name_or_path}]
+      [--reward_model_dir {inputs.reward_model_dir} ]
       --num_padding_at_beginning {inputs.num_padding_at_beginning} 
       --per_device_generation_batch_size {inputs.per_device_generation_batch_size}
       --per_device_training_batch_size {inputs.per_device_training_batch_size} 
@@ -237,6 +248,7 @@ launcher:
       --disable_actor_dropout
       --only_optimize_lora
       --deepspeed 
+      --print_answers
       --enable_azureml_logging
       [--inference_tp_size {inputs.inference_tp_size}]
       [--tp_gather_partition_size {inputs.tp_gather_partition_size}]

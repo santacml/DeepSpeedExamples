@@ -111,10 +111,10 @@ def main():
 
 
     if TASK == "sep_rm":
-        # default_compute_target, ws, ds, process_count_per_node = get_info("tscience")
+        default_compute_target, ws, ds, process_count_per_node = get_info("tscience")
         
-        default_compute_target, ws, ds, process_count_per_node = get_info("tscience-2")
-        instance_count = 2
+        # default_compute_target, ws, ds, process_count_per_node = get_info("tscience-2")
+        # instance_count = 2
 
         all_datasets_path =  Dataset.File.from_files(path=[(ds, "misantac_oss_rlhf/sep_rm/alpaca_processed")],validate=True).as_mount()
 
@@ -322,7 +322,7 @@ def main():
 
                 actor_model_dir=sft_model_weights,
                 actor_model_name_or_path=None,
-                critic_model_dir=rm_model_weights,
+                critic_model_dir=sft_model_weights,
                 critic_model_name_or_path=None,
 
                 reward_model_dir = None,

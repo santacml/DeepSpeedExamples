@@ -9,6 +9,8 @@ import os
 import time
 import deepspeed
 from deepspeed.runtime.zero.partition_parameters import ZeroParamStatus
+from torch.nn.utils.rnn import pad_sequence
+import torch.nn.functional as F
 
 sys.path.append(
     os.path.abspath(os.path.join(os.path.dirname(__file__), os.path.pardir)))
@@ -115,12 +117,86 @@ class DeepSpeedPPOTrainer():
                 out_seq.append(seq[i:i + 1])
         out_seq = torch.cat(out_seq, dim=0)  # concate output in the batch dim
 
-        return out_seq
+        reward_seq = None
+        reward_prompt_len = None
+        if self.reward_tokenizer is not None:
+            # decode and reencode prompts
+            reward_prompts_raw = self.tokenizer.batch_decode(prompts, skip_special_tokens=True)
+            # combine for reward seq
+            # reward_seq = torch.cat([reward_prompts, reward_ans], dim=1)
+
+            # reward_seq = []
+            # for prompt, ans in zip(reward_prompts_raw, reward_ans_raw):
+            #     reward_seq.append(prompt + ans)
+            # reward_seq = self.reward_tokenizer(reward_seq, return_tensors="pt", padding="max_length", truncation=True, max_length=self.max_token_len)
+
+            # '''
+            reward_prompts = []
+            for prompt in reward_prompts_raw:
+                prompt_token = self.reward_tokenizer(prompt, return_tensors="pt")
+                # for key_word in ["input_ids", "attention_mask"]:
+                # for key_word in ["input_ids"]:
+                key_word = "input_ids"
+                length = prompt_token[key_word].size()[-1]
+                if length > prompt_length:
+                    y = prompt_token[key_word].squeeze(0)[length -
+                                                            (prompt_length -
+                                                            1):].flip(0)
+                else:
+                    y = prompt_token[key_word].squeeze(0).flip(0)
+                prompt_token[key_word] = y
+                reward_prompts.append(prompt_token[key_word])
+            
+            reward_prompts_batched = {}
+            pad_token_id = self.tokenizer.pad_token_id
+
+            prompt = pad_sequence([f for f in reward_prompts],
+                                padding_value=pad_token_id,
+                                batch_first=True)
+            # prompt_mask = pad_sequence([f[1] for f in reward_prompts],
+            #                         padding_value=0,
+                                    # batch_first=True)
+
+            ### make sure the final ouput is a seqence of 2**?
+            length = prompt.size()[-1]
+            pad_length = prompt_length - length
+            if pad_length > 0:
+                reward_prompts_batched["prompt"] = F.pad(prompt,
+                                        pad=(0, pad_length),
+                                        mode='constant',
+                                        value=pad_token_id)
+                # reward_prompts_batched["prompt_att_mask"] = F.pad(prompt_mask,
+                #                                 pad=(0, pad_length),
+                #                                 mode='constant',
+                #                                 value=0)
+            else:
+                reward_prompts_batched["prompt"] = prompt
+                # reward_prompts_batched["prompt_att_mask"] = prompt_mask
+            reward_prompts_batched["prompt"] = reward_prompts_batched["prompt"].flip(1)
+            # reward_prompts_batched["prompt_att_mask"] = reward_prompts_batched["prompt_att_mask"].flip(1)
+
+            reward_prompt_len = reward_prompts_batched["prompt"].size()[-1]
+            # '''
+
+            reward_ans_raw = self.tokenizer.batch_decode(ans, skip_special_tokens=True)
+            reward_ans = self.reward_tokenizer(reward_ans_raw, return_tensors="pt", padding="max_length", truncation=True, max_length=self.max_answer_seq_len)
+
+            # reward_ans = [
+            #     self.reward_tokenizer(ans, return_tensors="pt", padding=True, max_) for ans in reward_ans_raw
+            # ]
+
+            # cat reward prompts and ans
+            reward_seq = torch.cat([reward_prompts_batched["prompt"], reward_ans["input_ids"]], dim=1)
+
+
+
+
+        return out_seq, reward_seq, reward_prompt_len
 
     def generate_experience(self, prompts, mask, step, reward_only=False):
         self.eval()
         generate_start = time.time()
-        seq = self._generate_sequence(prompts, mask, step)
+        seq, reward_seq, reward_prompt_len = self._generate_sequence(prompts, mask, step)
         generate_end = time.time()
         self.train()
 
@@ -128,11 +204,19 @@ class DeepSpeedPPOTrainer():
         attention_mask = seq.not_equal(pad_token_id).long()
         
         with torch.no_grad():
-            reward_score = self.reward_model.forward_value(
-                seq, attention_mask,
-                prompt_length=self.prompt_length)['chosen_end_scores'].detach(
-                )
-            
+            reward_seq = reward_seq.to(self.reward_model.device)
+            if reward_seq is not None:
+                reward_attention_mask = reward_seq.not_equal(self.reward_tokenizer.pad_token_id).long()
+                reward_score = self.reward_model.forward_value(
+                    reward_seq, reward_attention_mask,
+                    prompt_length=reward_prompt_len)['chosen_end_scores'].detach(
+                    )
+            else:
+                reward_score = self.reward_model.forward_value(
+                    seq, attention_mask,
+                    prompt_length=self.prompt_length)['chosen_end_scores'].detach(
+                    )
+                
             output_ref = None
             output = None
             values = None

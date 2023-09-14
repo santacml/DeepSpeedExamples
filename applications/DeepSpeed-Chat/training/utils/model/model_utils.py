@@ -63,8 +63,15 @@ def create_critic_model(model_name_or_path,
     import time
 
     start = time.time()
-    base_critic_model = create_hf_model(AutoModel, model_name_or_path, tokenizer,
-                                   ds_config, rlhf_training, disable_dropout)
+    seq_class = False
+    try:
+        base_critic_model = create_hf_model(AutoModel, model_name_or_path, tokenizer,
+                                    ds_config, rlhf_training, disable_dropout)
+    except:
+        base_critic_model = create_hf_model(AutoModelForSequenceClassification, model_name_or_path, tokenizer,
+                                    ds_config, rlhf_training, disable_dropout)
+        seq_class = True
+
     end = time.time()
     if torch.distributed.get_rank() == 0:
         print(f"> Creating model from_config took {end - start} seconds")
@@ -73,9 +80,9 @@ def create_critic_model(model_name_or_path,
     print("Loaded critic model as type", type(base_critic_model))
 
     v_head_weights = None
-    if isinstance(base_critic_model, GPTNeoXRewardModel):
+    if isinstance(base_critic_model, GPTNeoXRewardModel) or seq_class:
         critic_model = base_critic_model.gpt_neox
-        v_head_weights = base_critic_model.out_proj
+        v_head_weights = base_critic_model.out_proj.weight
 
     critic_model = RewardModel(
         critic_model,
@@ -87,7 +94,10 @@ def create_critic_model(model_name_or_path,
         if not os.path.isdir(model_name_or_path):
             # we don't know if the model is in one file or multiple files, so we must download from hf hub
             start = time.time()
-            model = AutoModel.from_pretrained(model_name_or_path)
+            try:
+                model = AutoModel.from_pretrained(model_name_or_path)
+            except:
+                model = AutoModelForSequenceClassification.from_pretrained(model_name_or_path)
             model_ckpt_state_dict = model.state_dict()
             end = time.time()
             if torch.distributed.get_rank() == 0:
