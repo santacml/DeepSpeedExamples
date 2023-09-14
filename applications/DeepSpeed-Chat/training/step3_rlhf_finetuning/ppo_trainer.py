@@ -13,8 +13,8 @@ from deepspeed.runtime.zero.partition_parameters import ZeroParamStatus
 sys.path.append(
     os.path.abspath(os.path.join(os.path.dirname(__file__), os.path.pardir)))
 
-from utils.utils import print_rank_0
-
+from utils.utils import print_rank_0, to_device, get_all_gather
+from utils.utils import AdaptiveKLController, FixedKLController
 
 def print_all_ranks(tag, value, rank):
     world_size = torch.distributed.get_world_size()
@@ -60,7 +60,10 @@ class DeepSpeedPPOTrainer():
         self.z3_enabled = args.actor_zero_stage == 3
 
         # Those value can be changed
-        self.kl_ctl = 0.1
+        if args.adap_kl_ctl:
+            self.kl_ctl = AdaptiveKLController(args.init_kl_coeff, args.target_kl_coeff)
+        else:
+            self.kl_ctl = FixedKLController(args.init_kl_coeff)
         self.clip_reward_value = 5
         self.cliprange = 0.2
         self.cliprange_value = 0.2
@@ -68,14 +71,14 @@ class DeepSpeedPPOTrainer():
         self.lam = 0.95
         self.generate_time = 0.0
 
-    def _generate_sequence(self, prompts, mask, step):
+    def _generate_sequence(self, prompts, mask, step, test):
 
         max_min_length = self.max_answer_seq_len + prompts.shape[1]
 
         # This has been added due to a probability/nan error that happens after
         # meta-llama/Llama-2-7b-hf enabled do_sample:
         # https://huggingface.co/meta-llama/Llama-2-7b-hf/commit/6fdf2e60f86ff2481f2241aaee459f85b5b0bbb9
-        if self.actor_model.model.config.model_type == "llama":
+        if test or self.actor_model.model.config.model_type == "llama":
             kwargs = dict(do_sample=False)
         else:
             kwargs = dict()
@@ -105,6 +108,15 @@ class DeepSpeedPPOTrainer():
                 f"--- ans    --> step={step}, rank={torch.distributed.get_rank()}, {self.tokenizer.batch_decode(ans, skip_special_tokens=True)}"
             )
 
+        if test and step==0:
+            #print only in beginning just to eyeball generation over time
+            print_rank_0(
+                f"--- prompt --> step={step}, rank={torch.distributed.get_rank()}, {self.tokenizer.batch_decode(prompts, skip_special_tokens=True)}", torch.distributed.get_rank()
+            )
+            print_rank_0(
+                f"--- ans    --> step={step}, rank={torch.distributed.get_rank()}, {self.tokenizer.batch_decode(ans, skip_special_tokens=True)}", torch.distributed.get_rank()
+            )
+
         out_seq = []
         for i in range(batch_size):
             if valid_ans_len[
@@ -116,10 +128,10 @@ class DeepSpeedPPOTrainer():
 
         return out_seq
 
-    def generate_experience(self, prompts, mask, step, reward_only=False):
+    def generate_experience(self, prompts, mask, step, reward_only=False, test= False):
         self.eval()
         generate_start = time.time()
-        seq = self._generate_sequence(prompts, mask, step)
+        seq = self._generate_sequence(prompts, mask, step, test)
         generate_end = time.time()
         self.train()
 
@@ -163,7 +175,7 @@ class DeepSpeedPPOTrainer():
     def compute_rewards(self, prompts, log_probs, ref_log_probs, reward_score,
                         action_mask):
 
-        kl_divergence_estimate = -self.kl_ctl * (log_probs - ref_log_probs)
+        kl_divergence_estimate = -self.kl_ctl.value * (log_probs - ref_log_probs)
         rewards = kl_divergence_estimate
         start = prompts.shape[1] - 1
         ends = start + action_mask[:, start:].sum(1) + 1
@@ -319,6 +331,37 @@ class DeepSpeedPPOTrainer():
         self.critic_model.eval()
         self.reward_model.eval()
         self.ref_model.eval()
+
+    def evaluate_model(self, prompt_eval_dataloader, device):
+        self.eval()
+        eval_rewards = []
+        for step, batch_prompt in enumerate(prompt_eval_dataloader):
+            
+
+            batch_prompt = to_device(batch_prompt, device)
+
+            out = self.generate_experience(
+                batch_prompt['prompt'],
+                batch_prompt['prompt_att_mask'],
+                step,
+                reward_only=True,
+                test = True
+            )
+                
+            eval_rewards.append(out["rewards"].flatten())
+
+        ## normalization logic
+        eval_rewards = torch.cat(get_all_gather(torch.cat(eval_rewards)))
+        eval_rewards_mean = eval_rewards.mean().item()
+
+        
+
+        self.train()
+        return eval_rewards_mean
+
+
+    def update_kl_coeff(self, current, n_steps):
+        self.kl_ctl.update(current, n_steps)
 
     def dump_model_norms(self, tag):
         actor_model_norm = get_model_norm(self.actor_model)

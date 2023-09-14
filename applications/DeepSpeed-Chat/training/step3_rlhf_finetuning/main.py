@@ -22,7 +22,7 @@ import random
 import time
 import torch
 import shutil
-from torch.utils.data import DataLoader, RandomSampler
+from torch.utils.data import DataLoader, RandomSampler, SequentialSampler
 from torch.utils.data.distributed import DistributedSampler
 
 from transformers import (
@@ -132,6 +132,13 @@ def parse_args():
         "Batch size (per device) for the training dataloader and generation purpose."
     )
     parser.add_argument(
+        "--per_device_eval_batch_size",
+        type=int,
+        default=2,
+        help=
+        "Batch size (per device) for the evaluation purpose."
+    )
+    parser.add_argument(
         "--per_device_training_batch_size",
         type=int,
         default=16,
@@ -150,8 +157,13 @@ def parse_args():
     parser.add_argument(
         "--saves_per_training_run",
         type=int,
-        default=10,
+        default=2,
         help="Save this many models regularly spaced throughout training, regardless of performance. Set to 0 for no  regularly spaced saving.")
+    parser.add_argument(
+        "--eval_interval",
+        type=int,
+        default=100,
+        help="Intervals for model evaluation on eval dataset.")
     parser.add_argument(
         "--save_critic",
         action='store_true',
@@ -387,6 +399,27 @@ def parse_args():
         help=
         "Training non-overflow step at which to terminate training during testing."
     )
+    parser.add_argument(
+        "--adap_kl_ctl",
+        type=bool,
+        default=False,
+        help=
+        "Whether to use adaptive KL controller or not."
+    )
+    parser.add_argument(
+        "--init_kl_coeff",
+        type=float,
+        default=0.2,
+        help=
+        "Initial value of Kl coeff."
+    )
+    parser.add_argument(
+        "--target_kl_coeff",
+        type=float,
+        default=0.1,
+        help=
+        "Target KL coeff."
+    )
 
     parser = deepspeed.add_config_arguments(parser)
     args = parser.parse_args()
@@ -424,7 +457,7 @@ def parse_args():
 
 def create_datasets(args, tokenizer, train_phase=3):
     unsupervised_training_enabled = args.unsupervised_dataset_name and args.unsupervised_dataset_config_name
-    prompt_train_dataset, _ = create_prompt_dataset(
+    prompt_train_dataset, prompt_eval_dataset = create_prompt_dataset(
         args.local_rank, args.data_path, args.data_split,
         args.data_output_path, train_phase, args.seed, tokenizer,
         args.max_prompt_seq_len)
@@ -438,11 +471,13 @@ def create_datasets(args, tokenizer, train_phase=3):
                                      args.inference_tp_size)
     if args.local_rank == -1:
         prompt_train_sampler = RandomSampler(prompt_train_dataset)
+        prompt_eval_sampler = SequentialSampler(prompt_eval_dataset)
         if unsupervised_training_enabled:
             unsupervised_train_sampler = RandomSampler(
                 unsupervised_train_dataset)
     else:
         prompt_train_sampler = DistributedSampler(prompt_train_dataset)
+        prompt_eval_sampler = DistributedSampler(prompt_eval_dataset)
         if unsupervised_training_enabled:
             unsupervised_train_sampler = DistributedSampler(
                 unsupervised_train_dataset)
@@ -451,6 +486,12 @@ def create_datasets(args, tokenizer, train_phase=3):
         collate_fn=data_collator,
         sampler=prompt_train_sampler,
         batch_size=args.per_device_generation_batch_size)
+    prompt_eval_dataloader = DataLoader(
+        prompt_eval_dataset,
+        collate_fn=data_collator,
+        sampler=prompt_eval_sampler,
+        batch_size=args.per_device_eval_batch_size)
+
     if unsupervised_training_enabled:
         unsupervised_train_dataloader = DataLoader(
             unsupervised_train_dataset,
@@ -466,7 +507,7 @@ def create_datasets(args, tokenizer, train_phase=3):
         args.ppo_epochs / args.gradient_accumulation_steps
     num_total_iters = int(args.num_train_epochs * num_update_steps_per_epoch)
 
-    return prompt_train_dataloader, unsupervised_train_dataloader, num_total_iters
+    return prompt_train_dataloader, prompt_eval_dataloader, unsupervised_train_dataloader, num_total_iters
 
 @torch.no_grad()
 def evaluation_reward_normalization(args, trainer, prompt_train_dataloader, device):
@@ -530,7 +571,7 @@ def main():
     if args.enable_azureml_logging:
         loggers.append(AzureMLLogger(args.global_rank))
 
-    logger = MultiLogger(loggers)
+    logger = MultiLogger(args.global_rank, loggers)
 
     unsupervised_training_enabled = args.unsupervised_dataset_name and args.unsupervised_dataset_config_name
     if unsupervised_training_enabled:
@@ -547,7 +588,7 @@ def main():
     tokenizer = load_hf_tokenizer(args.actor_model_name_or_path,
                                   fast_tokenizer=True)
         
-    prompt_train_dataloader, unsupervised_train_dataloader, num_total_iters = create_datasets(
+    prompt_train_dataloader, prompt_eval_dataloader, unsupervised_train_dataloader, num_total_iters = create_datasets(
         args=args, tokenizer=tokenizer, train_phase=3)
 
     # RLHF engine is responsible for creating models, loading checkpoints, ds-initialize models/optims/lr-schedulers
@@ -606,6 +647,7 @@ def main():
 
     print_rank_0(f"Saving models every {save_interval} steps", args.global_rank)
     
+    
     for epoch in range(args.num_train_epochs):
         print_rank_0(
             f"Beginning of Epoch {epoch+1}/{args.num_train_epochs}, Total Generation Batches {min(len(prompt_train_dataloader), len(unsupervised_train_dataloader))}",
@@ -639,6 +681,7 @@ def main():
                 inner_iter = 0
                 actor_loss_sum, critic_loss_sum, unsup_loss_sum = 0, 0, 0
                 average_reward = 0
+                avg_kl = 0
 
                 if args.actor_gradient_checkpointing:
                     rlhf_engine.actor.gradient_checkpointing_enable()
@@ -650,6 +693,8 @@ def main():
                         actor_loss_sum += actor_loss.item()
                         critic_loss_sum += critic_loss.item()
                         average_reward += exp_data["rewards"].mean()
+                        _kl = ((exp_data['logprobs']-exp_data['ref_logprobs'])*exp_data['attention_mask'][:, 1:]).sum(axis=-1)
+                        avg_kl += _kl.mean()
 
                         if unsupervised_training_enabled:
                             unsup_loss = trainer.train_unsupervised(
@@ -665,6 +710,7 @@ def main():
                     random.shuffle(exp_dataset)
                     random.shuffle(unsup_dataset)
 
+                trainer.update_kl_coeff(avg_kl/inner_iter,args.per_device_training_batch_size*torch.cuda.device_count())
                 end = time.time()
                 training_time = end - training_start
                 e2e_time = training_time + trainer.generate_time * args.generation_batches  # it is an approximation, we did not include, e.g., rw forward time etc
@@ -677,11 +723,13 @@ def main():
                                        trainer.generate_time, training_time,
                                        args.global_rank)
                 average_reward = get_all_reduce_mean(average_reward).item()
+                avg_kl = get_all_reduce_mean(avg_kl).item()
                 logger.log("reward", float(average_reward / inner_iter))
                 logger.log("actor_loss", float(actor_loss))
                 logger.log("actor_loss_sum", float(actor_loss_sum))
                 logger.log("critic_loss", float(critic_loss))
                 logger.log("critic_loss_sum", float(critic_loss_sum))
+                logger.log("KL", float(avg_kl/inner_iter))
                 print_rank_0(
                     f"Average reward score: {average_reward/inner_iter}",
                     args.global_rank)
@@ -689,7 +737,14 @@ def main():
                     "-------------------------------------------------------------------------------------",
                     args.global_rank)
                     
+                if global_step % args.eval_interval == 0:
+                    print_rank_0('-'*50, args.global_rank)
+                    print_rank_0("Evaulating model.......", args.global_rank)
+                    # print_rank_0('-'*50)
+                    eval_reward = trainer.evaluate_model(prompt_eval_dataloader, device)
+                logger.log("Eval_reward", float(eval_reward))
                 global_step += 1
+                
                 last_rewards.append(float(average_reward/inner_iter))
                 if len(last_rewards) > 10:
                     last_rewards.pop(0)

@@ -235,6 +235,7 @@ launcher:
       [--stop_token {inputs.stop_token}]
       --normalize_rm
       --disable_actor_dropout
+      --disable_critic_dropout
       --only_optimize_lora
       --deepspeed 
       --enable_azureml_logging

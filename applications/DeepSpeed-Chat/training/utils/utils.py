@@ -49,7 +49,8 @@ class TensorBoardLogger(Logger):
         self.writer.flush()
 
 class MultiLogger(Logger):
-    def __init__(self, loggers):
+    def __init__(self, rank, loggers):
+        super().__init__(rank)
         self.loggers = loggers
 
     def _log(self, name, value, step=None):
@@ -321,3 +322,30 @@ def save_zero_three_model(model_ema, global_rank, save_dir, zero_stage=0):
         if global_rank == 0:
             torch.save(output_state_dict, output_model_file)
         del output_state_dict
+
+class AdaptiveKLController:
+    """
+    Adaptive KL controller described in the paper:
+    https://arxiv.org/pdf/1909.08593.pdf
+    """
+
+    def __init__(self, init_kl_coef, target, horizon=10000):
+        self.value = init_kl_coef
+        self.target = target
+        self.horizon = horizon
+
+    def update(self, current, n_steps):
+        target = self.target
+        proportional_error = np.clip(current / target - 1, -0.2, 0.2)
+        mult = 1 + proportional_error * n_steps / self.horizon
+        self.value *= mult
+
+
+class FixedKLController:
+    """Fixed KL controller."""
+
+    def __init__(self, kl_coef):
+        self.value = kl_coef
+
+    def update(self, current, n_steps):
+        pass

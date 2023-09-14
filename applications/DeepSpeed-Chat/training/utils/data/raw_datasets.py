@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 # DeepSpeed Team
+import datasets
 from datasets import load_dataset, load_from_disk
 from torch.utils.data import Subset
 import re
@@ -43,6 +44,56 @@ class PromptRawDataset(object):
     def get_prompt_and_rejected(self, sample):
         return
 
+class StackExchangeDataset(object):
+
+    def __init__(self, output_path, seed, local_rank, dataset_name, train_size=100000, eval_size=1000):
+        
+        _data_names = dataset_name.split('/')
+        self.dataset_name = _data_names[0]+'/'+_data_names[1]#dataset_name 
+        self.data_sub_dir = _data_names[2]+'/'+_data_names[3]
+        self.dataset_name_clean = "stack_exchange_paired"
+        self.output_path = output_path
+        self.seed = seed
+        self.local_rank = local_rank
+
+
+        if _data_names[3]=='reward':
+            #########reward has different evaluation data for stackexchange unlike SFT and RL
+            train_dataset = load_dataset(self.dataset_name, data_dir=self.data_sub_dir, split="train")
+            eval_dataset = load_dataset(self.dataset_name, data_dir="data/evaluation", split="train")
+            train_dataset = train_dataset.select(range(train_size))
+            eval_dataset = eval_dataset.select(range(eval_size))
+            self.raw_datasets = datasets.DatasetDict({"train":train_dataset,"test":eval_dataset})
+        else:
+            self.raw_datasets = load_dataset(self.dataset_name, data_dir=self.data_sub_dir, split="train")
+            self.raw_datasets = self.raw_datasets.train_test_split(test_size=0.005, seed=1234)
+            self.raw_datasets["train"] = self.raw_datasets["train"].select(range(train_size))
+            self.raw_datasets['test'] = self.raw_datasets['test'].select(range(eval_size))
+        
+        
+
+    def get_train_data(self):
+        
+        return self.raw_datasets["train"] #.select(range(150000)) #train_data #
+
+    def get_eval_data(self):
+        
+        return self.raw_datasets['test'] #.select(range(2000)) #valid_data #self.raw_datasets["test"]
+
+    def get_prompt(self, sample):
+        return sample['question']#sample['prompt']
+
+    def get_chosen(self, sample):
+        return sample['response_j']#sample['chosen']
+
+    def get_rejected(self, sample):
+        return sample['response_k'] #sample['rejected']
+
+    def get_prompt_and_chosen(self, sample):
+        return f"Question: {sample['question']}\n\nAnswer: {sample['response_j']}"#sample['question'] + sample['response_j']
+
+    def get_prompt_and_rejected(self, sample):
+        return f"Question: {sample['question']}\n\nAnswer: {sample['response_k']}" #sample['question'] + sample['response_k']
 
 # English dataset
 class DahoasRmstaticDataset(PromptRawDataset):
@@ -53,10 +104,10 @@ class DahoasRmstaticDataset(PromptRawDataset):
         self.dataset_name_clean = "Dahoas_rm_static"
 
     def get_train_data(self):
-        return self.raw_datasets["train"]
+        return self.raw_datasets["train"].select(range(1000))
 
     def get_eval_data(self):
-        return self.raw_datasets["test"]
+        return self.raw_datasets["test"].select(range(100))
 
     def get_prompt(self, sample):
         return sample['prompt']
