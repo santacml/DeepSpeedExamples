@@ -34,8 +34,8 @@ def get_info(cluster):
         subscription_id = '9ec1d932-0f3f-486c-acc6-e7d78b358f9b'
         resource_group = 'tscience'
         workspace_name = 'tscience_research'
-        # default_compute_target = "A100-80-WUS3"
-        default_compute_target = "tscience-a100-80g-eastus"
+        default_compute_target = "A100-80-WUS3"
+        # default_compute_target = "tscience-a100-80g-eastus"
         # default_compute_target = "a100-40g-westus3"
         ws = Workspace(subscription_id, resource_group, workspace_name)
         ds = Datastore.get(ws, "babela100")
@@ -67,7 +67,7 @@ def main():
 
     
     timestamp = datetime.datetime.fromtimestamp(time.time()).strftime('%Y-%m-%d-%H%M%S')
-    output_path = f'misantac_oss_rlhf_v2/logs-{timestamp}'
+    output_path = f'hitshar_rlhf/logs-{timestamp}'
 
     ppo_baseline_input = None
     rm_model_weights_input = None
@@ -79,7 +79,7 @@ def main():
     normalize_rm_scale = 1.0
     num_padding_at_beginning=0
     sft_wd = .05
-    rm_wd = .1
+    rm_wd = .001
     ppo_actor_wd = 0
     ppo_critic_wd = 0
 
@@ -97,7 +97,7 @@ def main():
     
     lora_sft_model_weights_input = None
 
-    data_split="2,4,4"
+    data_split="0,1,0"
     
     # data_split="3,3,4"
 
@@ -127,9 +127,9 @@ def main():
         sft_lr = 1e-6
 
         # rm_e = 5
-        rm_e = 1
-        rm_lr = 1e-5
-        rm_lora = 0
+        rm_e = 4
+        rm_lr = 2e-5
+        rm_lora = 8
         
         reward_loss_mult=.1
 
@@ -171,7 +171,7 @@ def main():
         # rm_e = 5
         rm_e = 1
         rm_lr = 1e-5
-        rm_lora = 0
+        rm_lora = 8
         
         reward_loss_mult=.1
 
@@ -185,7 +185,7 @@ def main():
         critic_learning_rate=5e-5
         
         
-        max_prompt_seq_len = 1024
+        max_prompt_seq_len = 512
         max_answer_seq_len = 128
         # '''
         
@@ -200,7 +200,8 @@ def main():
         model_weights = None
         num_padding_at_beginning = 0
 
-        model_dir = Dataset.File.from_files(path=[(ds, "llama-2/Llama-2-7b-hf/")],validate=True).as_mount()
+        # model_dir = Dataset.File.from_files(path=[(ds, "llama-2/Llama-2-7b-hf/")],validate=True).as_mount()
+        model_dir = Dataset.File.from_files(path=[(ds, "misantac_oss_rlhf_v2/logs-2023-09-08-145050/stackxLlama2/sft/")],validate=True).as_mount()
         # model_dir = Dataset.File.from_files(path=[(ds, "llama-2/")],validate=True).as_mount()
         # model_name_or_path = "Llama-2-7b-hf"
         model_name_or_path = ""
@@ -211,7 +212,7 @@ def main():
         
     ppo_instance_count = instance_count
 
-    rm_gradient_accumulation_steps = int(gradient_accumulation_steps*2)
+    rm_gradient_accumulation_steps = 1 #int(gradient_accumulation_steps*2)
 
         
     max_seq_len = max_prompt_seq_len + max_answer_seq_len
@@ -228,10 +229,10 @@ def main():
     )
 
 
-    ppo_func = Component.from_yaml(
-        ws,
-        yaml_file= Path(__file__).parent / "training" / "ppo.yaml"
-    )
+    # ppo_func = Component.from_yaml(
+    #     ws,
+    #     yaml_file= Path(__file__).parent / "training" / "ppo.yaml"
+    # )
 
 
     
@@ -250,7 +251,7 @@ def main():
     )
     def train_pipeline():
         
-        # '''
+        '''
         if sft_model_weights_input is None:
             trainer = train_func(
                 data_path=all_datasets_path,
@@ -285,9 +286,9 @@ def main():
         else:
             sft_model_weights = sft_model_weights_input
 
-        # '''
-
         '''
+
+        #'''
         if rm_model_weights_input is None:
             rm_per_device_train_batch_size = per_device_train_batch_size    
 
@@ -304,7 +305,7 @@ def main():
                 weight_decay=rm_wd,
                 num_train_epochs=rm_e,
                 gradient_accumulation_steps=rm_gradient_accumulation_steps,
-                lr_scheduler_type="cosine",
+                lr_scheduler_type="linear",
                 num_warmup_steps=0,
                 seed=42,
                 zero_stage=zero_stage,
@@ -315,7 +316,7 @@ def main():
 
             rm_trainer.outputs.output_dir.configure(
                 mode="mount",
-                path_on_datastore=output_path + "/rm",
+                path_on_datastore=output_path + "/stackxLlama2/rm",
                 datastore=ds
             )
 
@@ -323,7 +324,7 @@ def main():
         else:
             rm_model_weights = rm_model_weights_input
 
-        '''
+        #'''
 
         ''' reg lora ppo
 

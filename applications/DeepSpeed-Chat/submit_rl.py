@@ -104,6 +104,7 @@ def main():
 
 
     if TASK == "Dahoas/rm-static":
+        
         # default_compute_target, ws, ds, process_count_per_node = get_info("tscience")
         
         default_compute_target, ws, ds, process_count_per_node = get_info("tscience-2")
@@ -147,9 +148,9 @@ def main():
         max_answer_seq_len = 256
     
     elif TASK=="lvwerra/stack-exchange-paired":
-        
-        default_compute_target, ws, ds, process_count_per_node = get_info("tscience-2")
-        instance_count = 2
+        default_compute_target, ws, ds, process_count_per_node = get_info("tscience")
+        # default_compute_target, ws, ds, process_count_per_node = get_info("tscience-2")
+        instance_count = 1
 
         all_datasets_path = Dataset.File.from_files(path=[(ds, "rlhf_datasets/lvwerra/stack-exchange-paired/data/finetune/train/**")],validate=True).as_mount()
         
@@ -177,12 +178,12 @@ def main():
 
 
         ppo_per_device_train_batch_size = 1
-        per_device_mini_train_batch_size= 2 
-        ppo_gradient_accumulation_steps=20
+        per_device_mini_train_batch_size= 1
+        ppo_gradient_accumulation_steps=4
     
     
-        actor_learning_rate=5e-4
-        critic_learning_rate=5e-5
+        actor_learning_rate=1.41e-5
+        critic_learning_rate=1.41e-5
         
         
         max_prompt_seq_len = 1024
@@ -250,7 +251,7 @@ def main():
     )
     def train_pipeline():
         
-        # '''
+        '''
         if sft_model_weights_input is None:
             trainer = train_func(
                 data_path=all_datasets_path,
@@ -285,7 +286,7 @@ def main():
         else:
             sft_model_weights = sft_model_weights_input
 
-        # '''
+        '''
 
         '''
         if rm_model_weights_input is None:
@@ -325,12 +326,13 @@ def main():
 
         '''
 
-        ''' reg lora ppo
-
+        #''' reg lora ppo
+        sft_model_weights = Dataset.File.from_files(path=[(ds, "misantac_oss_rlhf_v2/logs-2023-09-08-145050/stackxLlama2/sft")],validate=True).as_mount()
+        rm_model_weights = Dataset.File.from_files(path=[(ds, "misantac_oss_rlhf_v2/logs-2023-09-08-222832/stackxLlama2/rm")],validate=True).as_mount()
         if ppo_baseline_input is None:
             ppo = ppo_func(
                 data_path=all_datasets_path,
-                data_split=data_split,
+                data_split="0,0,1",
                 # actor_model_dir=model_dir,
                 # actor_model_name_or_path=model_name_or_path,
                 # critic_model_dir=model_dir,
@@ -343,7 +345,7 @@ def main():
                 per_device_generation_batch_size=per_device_train_batch_size,
                 per_device_training_batch_size=per_device_mini_train_batch_size,
                 generation_batches= 1,
-                ppo_epochs=1,
+                ppo_epochs=4,
                 max_answer_seq_len=max_answer_seq_len,
                 max_prompt_seq_len=max_prompt_seq_len,
 
@@ -359,14 +361,14 @@ def main():
                 lr_scheduler_type="cosine",
                 gradient_accumulation_steps=ppo_gradient_accumulation_steps,
                 num_warmup_steps=100,
-                seed=42,
+                seed=48,
                 # actor_zero_stage="3",
                 # critic_zero_stage="3",
                 actor_zero_stage=ppo_zero_stage,
                 critic_zero_stage=ppo_zero_stage,
-                actor_lora_dim=128,
+                actor_lora_dim=16,
                 actor_lora_module_name=lora_module_name,
-                critic_lora_dim=128,
+                critic_lora_dim=16,
                 critic_lora_module_name=lora_module_name,
 
 
@@ -377,7 +379,7 @@ def main():
 
             ppo.outputs.output_dir.configure(
                 mode="mount",
-                path_on_datastore=output_path + "/ppo",
+                path_on_datastore=output_path + "/stackxLlama2/apa",
                 datastore=ds
             )
             
@@ -398,7 +400,7 @@ def main():
         else:
             ppo_baseline = ppo_baseline_input
 
-        '''
+        #'''
 
 
 

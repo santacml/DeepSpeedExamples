@@ -30,7 +30,7 @@ inputs:
   data_path: 
     description: Training dataset
     optional: false
-    type: string
+    type: path
   data_split:
     description: Comma-separated list of proportions for training
     optional: false
@@ -240,6 +240,7 @@ launcher:
       [--stop_token {inputs.stop_token}]
       [--normalize_rm_scale {inputs.normalize_rm_scale}]
       --disable_actor_dropout
+      --disable_critic_dropout
       --only_optimize_lora
       --deepspeed 
       [--inference_tp_size {inputs.inference_tp_size}]

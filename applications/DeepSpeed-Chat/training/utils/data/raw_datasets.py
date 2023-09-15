@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 # DeepSpeed Team
+import datasets
 from datasets import load_dataset, load_from_disk
 from torch.utils.data import Subset
 import re
@@ -15,8 +16,10 @@ class PromptRawDataset(object):
         self.output_path = output_path
         self.seed = seed
         self.local_rank = local_rank
+        
         if not dataset_name == 'local/jsonfile':
             self.raw_datasets = load_dataset(dataset_name)
+        
 
     def get_train_data(self):
         return
@@ -42,6 +45,62 @@ class PromptRawDataset(object):
 
     def get_prompt_and_rejected(self, sample):
         return
+
+class StackExchangeDataset(object):
+
+    def __init__(self, output_path, seed, local_rank, dataset_name):
+        #super().__init__(output_path, seed, local_rank, dataset_name)
+        self.dataset_name = dataset_name #"lvwerra/stack-exchange-paired"
+        self.dataset_name_clean = "stack_exchange_paired"
+        self.output_path = output_path
+        self.seed = seed
+        self.local_rank = local_rank
+
+        
+        #######~~~~~~~~~~~~~~~~~~for SFT model~~~~~~~~~~~~~~~~~~~~~~~~
+        # self.raw_datasets = load_from_disk(dataset_name) #load_dataset(dataset_name, data_dir="data/finetune", streaming="store_true")
+        # self.raw_datasets  = load_dataset("lvwerra/stack-exchange-paired",data_dir="data/finetune",split="train") #, streaming="store_true")
+        # self.raw_datasets = self.raw_datasets.train_test_split(test_size=0.005, seed=1234)
+        # self.raw_datasets["train"] = self.raw_datasets["train"].select(range(150000))
+        # self.raw_datasets['test'] = self.raw_datasets['test'].select(range(2000)) 
+        # print("The length of dataset is", len(self.raw_datasets))
+        
+        #######~~~~~~~~~~~~~~~~~~for reward model~~~~~~~~~~~~~~~~~~~~~~~~
+        
+        # train_dataset = load_dataset("lvwerra/stack-exchange-paired", data_dir="data/reward", split="train")
+        # train_dataset = train_dataset.select(range(100000))
+        # eval_dataset = load_dataset("lvwerra/stack-exchange-paired", data_dir="data/evaluation", split="train")
+        # eval_dataset = eval_dataset.select(range(2000))
+        # self.raw_datasets = datasets.DatasetDict({"train":train_dataset,"test":eval_dataset})
+
+        #######~~~~~~~~~~~~~~~~~~for rl model~~~~~~~~~~~~~~~~~~~~~~~~
+        self.raw_datasets  = load_dataset("lvwerra/stack-exchange-paired", data_dir="data/rl", split="train")
+        self.raw_datasets = self.raw_datasets.train_test_split(test_size=0.005, seed=1234)
+        self.raw_datasets["train"] = self.raw_datasets["train"].select(range(100000))
+        self.raw_datasets['test'] = self.raw_datasets['test'].select(range(2000))
+
+    def get_train_data(self):
+        
+        return self.raw_datasets["train"] #.select(range(150000)) #train_data #
+
+    def get_eval_data(self):
+        
+        return self.raw_datasets['test'] #.select(range(2000)) #valid_data #self.raw_datasets["test"]
+
+    def get_prompt(self, sample):
+        return sample['question']#sample['prompt']
+
+    def get_chosen(self, sample):
+        return sample['response_j']#sample['chosen']
+
+    def get_rejected(self, sample):
+        return sample['response_k'] #sample['rejected']
+
+    def get_prompt_and_chosen(self, sample):
+        return f"Question: {sample['question']}\n\nAnswer: {sample['response_j']}"#sample['question'] + sample['response_j']
+
+    def get_prompt_and_rejected(self, sample):
+        return f"Question: {sample['question']}\n\nAnswer: {sample['response_k']}" #sample['question'] + sample['response_k']
 
 
 # English dataset

@@ -34,7 +34,7 @@ inputs:
   data_path: 
     description: Training dataset
     optional: false
-    type: string
+    type: path
   sft_only_data_path: 
     description: Training dataset for sft especially
     optional: true

@@ -365,6 +365,9 @@ def main():
             azureml_logger.log("train_loss", float(loss))
             azureml_logger.log("train_mean_loss", float(mean_loss/(step+1)))
             global_step += 1
+            # if global_step == 200000:
+            #     break
+
 
         print_rank_0(
             f"Epoch {epoch+1}/{args.num_train_epochs} with loss {mean_loss/(step+1)}",

@@ -64,6 +64,9 @@ def get_raw_dataset(dataset_name, output_path, seed, local_rank):
     elif "lmqg/qag_jaquad" in dataset_name:
         return raw_datasets.LmqgQagjaquadDataset(output_path, seed, local_rank,
                                                  dataset_name)
+    elif "lvwerra/stack-exchange-paired" in dataset_name:
+        return raw_datasets.StackExchangeDataset(output_path, seed, local_rank,
+                                                 dataset_name)
     elif "local/jsonfile" in dataset_name:
         chat_path = os.path.abspath(
             os.path.join(os.path.dirname(__file__), os.path.pardir,
@@ -77,8 +80,8 @@ def get_raw_dataset(dataset_name, output_path, seed, local_rank):
                                                  dataset_name, chat_path)
     elif os.path.exists(dataset_name):
         print("Loading dataset as HF dataset from path...", dataset_name)
-        return raw_datasets.LocalHFDataset(output_path, seed,
-                                                  local_rank, dataset_name)
+        return raw_datasets.StackExchangeDataset(output_path, seed, local_rank,
+                                                 dataset_name)
     else:
         raise RuntimeError(
             f"We do not have configs for dataset {dataset_name}, but you can add it by yourself in raw_datasets.py."
@@ -202,10 +205,12 @@ def create_dataset_split(current_dataset, raw_dataset, train_phase, tokenizer,
                                          return_tensors="pt")
                 chosen_token["input_ids"] = chosen_token["input_ids"]
                 chosen_token["attention_mask"] = chosen_token["attention_mask"]
-                chosen_dataset.append(chosen_token)
+                
 
                 reject_token["input_ids"] = reject_token["input_ids"]
                 reject_token["attention_mask"] = reject_token["attention_mask"]
+                # if len(chosen_token["input_ids"])<=512 and len(reject_token["input_ids"])<=512:
+                chosen_dataset.append(chosen_token)
                 reject_dataset.append(reject_token)
 
     elif train_phase == 3:
@@ -225,7 +230,8 @@ def create_dataset_split(current_dataset, raw_dataset, train_phase, tokenizer,
                     else:
                         y = prompt_token[key_word].squeeze(0).flip(0)
                     prompt_token[key_word] = y
-                prompt_dataset.append(prompt_token)
+                if len(prompt_token["input_ids"])<=512:
+                    prompt_dataset.append(prompt_token)
     return PromptDataset(prompt_dataset, chosen_dataset, reject_dataset,
                          tokenizer.pad_token_id, train_phase)
 

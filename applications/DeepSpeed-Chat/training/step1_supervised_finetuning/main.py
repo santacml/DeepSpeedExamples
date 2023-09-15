@@ -371,6 +371,8 @@ def main():
             azureml_logger.log("step", global_step)
             azureml_logger.log("train_loss", float(loss))
             global_step += 1
+            if global_step == 150000:
+                break
 
         # Evaluate perplexity on the validation set.
         print_rank_0(
@@ -401,6 +403,8 @@ def main():
                                         zero_stage=args.zero_stage)
 
                 model = unfuse_lora_linear_layer(model)
+
+        
 
     if args.global_rank == 0:
         print_rank_0(f"Copying best model... best model epoch is {best_val_ppl_epoch} with value {best_val_ppl}", args.global_rank)

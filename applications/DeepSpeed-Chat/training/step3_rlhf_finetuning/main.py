@@ -32,6 +32,7 @@ from transformers import (
 import deepspeed
 
 from ppo_trainer import DeepSpeedPPOTrainer, DeepSpeedPPOTrainerUnsupervised
+from apa_trainer import DeepSpeedAPATrainer, DeepSpeedAPATrainerUnsupervised
 from rlhf_engine import DeepSpeedRLHFEngine
 
 import sys
@@ -147,6 +148,7 @@ def parse_args():
         type=int,
         default=1,
         help="For generated data, how many ppo training epochs to run.")
+    
     parser.add_argument("--max_prompt_seq_len",
                         type=int,
                         default=256,
@@ -554,7 +556,10 @@ def main():
     args.end_of_conversation_token = "<|endoftext|>"
 
     ppo_trainer = DeepSpeedPPOTrainerUnsupervised if unsupervised_training_enabled else DeepSpeedPPOTrainer
-    trainer = ppo_trainer(rlhf_engine, args)
+    apa_trainer = DeepSpeedAPATrainerUnsupervised if unsupervised_training_enabled else DeepSpeedAPATrainer
+    
+    trainer = apa_trainer(rlhf_engine, args) 
+    # trainer = ppo_trainer(rlhf_engine, args)
     
     if args.normalize_rm_scale > 0 :
         print_rank_0("***** Running RM Normalization*****", args.global_rank)
@@ -576,7 +581,8 @@ def main():
     print_rank_0("***** Running training *****", args.global_rank)
 
     non_overflow_step_count = 0
-
+    global_step = 0
+    
     for epoch in range(args.num_train_epochs):
         print_rank_0(
             f"Beginning of Epoch {epoch+1}/{args.num_train_epochs}, Total Generation Batches {min(len(prompt_train_dataloader), len(unsupervised_train_dataloader))}",
@@ -610,6 +616,7 @@ def main():
                 inner_iter = 0
                 actor_loss_sum, critic_loss_sum, unsup_loss_sum = 0, 0, 0
                 average_reward = 0
+                avg_kl = 0
 
                 if args.actor_gradient_checkpointing:
                     rlhf_engine.actor.gradient_checkpointing_enable()
@@ -621,6 +628,8 @@ def main():
                         actor_loss_sum += actor_loss.item()
                         critic_loss_sum += critic_loss.item()
                         average_reward += exp_data["rewards"].mean()
+                        _kl = ((exp_data['logprobs']-exp_data['ref_logprobs'])*exp_data['attention_mask'][:, 1:]).sum(axis=-1)
+                        avg_kl += _kl.mean()
 
                         if unsupervised_training_enabled:
                             unsup_loss = trainer.train_unsupervised(
@@ -648,11 +657,13 @@ def main():
                                        trainer.generate_time, training_time,
                                        args.global_rank)
                 average_reward = get_all_reduce_mean(average_reward).item()
+                avg_kl = get_all_reduce_mean(avg_kl).item()
                 azureml_logger.log("reward", float(average_reward / inner_iter))
                 azureml_logger.log("actor_loss", float(actor_loss))
                 azureml_logger.log("actor_loss_sum", float(actor_loss_sum))
                 azureml_logger.log("critic_loss", float(critic_loss))
                 azureml_logger.log("critic_loss_sum", float(critic_loss_sum))
+                azureml_logger.log("KL", float(avg_kl/inner_iter))
                 print_rank_0(
                     f"Average reward score: {average_reward/inner_iter}",
                     args.global_rank)
@@ -677,7 +688,15 @@ def main():
                     writer.add_scalar('critic_loss_sum',
                                       critic_loss_sum,
                                       global_step=step)
+                    writer.add_scalar('KL_div',
+                                      avg_kl/inner_iter,
+                                      global_step=step)
                     writer.flush()
+                global_step += 1
+                
+                
+                if global_step == 200000:
+                    break
 
             if args.actor_gradient_checkpointing:
                 rlhf_engine.actor.gradient_checkpointing_disable()
