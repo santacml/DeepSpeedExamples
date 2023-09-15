@@ -49,7 +49,8 @@ class TensorBoardLogger(Logger):
         self.writer.flush()
 
 class MultiLogger(Logger):
-    def __init__(self, loggers):
+    def __init__(self, loggers, rank):
+        super().__init__(rank)
         self.loggers = loggers
 
     def _log(self, name, value, step=None):

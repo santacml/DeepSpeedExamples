@@ -530,7 +530,7 @@ def main():
     if args.enable_azureml_logging:
         loggers.append(AzureMLLogger(args.global_rank))
 
-    logger = MultiLogger(loggers)
+    logger = MultiLogger(loggers,args.global_rank)
 
     unsupervised_training_enabled = args.unsupervised_dataset_name and args.unsupervised_dataset_config_name
     if unsupervised_training_enabled:

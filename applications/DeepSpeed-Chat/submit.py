@@ -108,7 +108,7 @@ def main():
         default_compute_target, ws, ds, process_count_per_node = get_info("tscience-2")
         instance_count = 2
 
-        all_datasets_path =  "Dahoas/rm-static"
+        all_datasets_path = "Dahoas/rm-static" #"lvwerra/stack-exchange-paired/data/rl" #"Dahoas/rm-static"
         
 
         per_device_train_batch_size = 2
@@ -208,7 +208,7 @@ def main():
     )
     def train_pipeline():
         
-        # '''
+        '''
         if sft_model_weights_input is None:
             trainer = train_func(
                 data_path=all_datasets_path,
@@ -243,9 +243,9 @@ def main():
         else:
             sft_model_weights = sft_model_weights_input
 
-        # '''
+        '''
 
-        # '''
+        '''
         if rm_model_weights_input is None:
             rm_per_device_train_batch_size = per_device_train_batch_size    
 
@@ -281,10 +281,11 @@ def main():
         else:
             rm_model_weights = rm_model_weights_input
 
-        # '''
+        '''
 
         # ''' reg lora ppo
-
+        sft_model_weights = Dataset.File.from_files(path=[(ds, "misantac_oss_rlhf_v2/logs-2023-09-08-145050/stackxLlama2/sft")],validate=True).as_mount()
+        rm_model_weights = Dataset.File.from_files(path=[(ds, "misantac_oss_rlhf_v2/logs-2023-09-08-222832/stackxLlama2/rm")],validate=True).as_mount()
         if ppo_baseline_input is None:
             ppo = ppo_func(
                 data_path=all_datasets_path,
