@@ -211,43 +211,43 @@ launcher:
   type: torch.distributed
   additional_arguments: >    
     pip install -e . && python ./examples/training/step3_rlhf_finetuning/main.py
-      [--data_path {inputs.data_path} ]
-      --data_split {inputs.data_split}  
+      [--data_path {inputs.data_path}]
+      --data_split {inputs.data_split}
       [--actor_model_name_or_path {inputs.actor_model_name_or_path}]
-      [--actor_model_dir {inputs.actor_model_dir} ]
+      [--actor_model_dir {inputs.actor_model_dir}]
       [--critic_model_name_or_path {inputs.critic_model_name_or_path}]
-      [--critic_model_dir {inputs.critic_model_dir} ]
-      --num_padding_at_beginning {inputs.num_padding_at_beginning} 
+      [--critic_model_dir {inputs.critic_model_dir}]
+      --num_padding_at_beginning {inputs.num_padding_at_beginning}
       --per_device_generation_batch_size {inputs.per_device_generation_batch_size}
-      --per_device_training_batch_size {inputs.per_device_training_batch_size} 
-      --generation_batches {inputs.generation_batches} 
-      --ppo_epochs {inputs.ppo_epochs}   
-      --max_answer_seq_len {inputs.max_answer_seq_len}  
-      --max_prompt_seq_len {inputs.max_prompt_seq_len}  
-      --actor_learning_rate {inputs.actor_learning_rate}  
-      --critic_learning_rate {inputs.critic_learning_rate}  
-      --actor_weight_decay {inputs.actor_weight_decay}  
-      --critic_weight_decay {inputs.critic_weight_decay}  
+      --per_device_training_batch_size {inputs.per_device_training_batch_size}
+      --generation_batches {inputs.generation_batches}
+      --ppo_epochs {inputs.ppo_epochs}
+      --max_answer_seq_len {inputs.max_answer_seq_len}
+      --max_prompt_seq_len {inputs.max_prompt_seq_len}
+      --actor_learning_rate {inputs.actor_learning_rate}
+      --critic_learning_rate {inputs.critic_learning_rate}
+      --actor_weight_decay {inputs.actor_weight_decay}
+      --critic_weight_decay {inputs.critic_weight_decay}
       --num_train_epochs {inputs.num_train_epochs}
-      --gradient_accumulation_steps {inputs.gradient_accumulation_steps}  
-      --lr_scheduler_type {inputs.lr_scheduler_type} 
-      --num_warmup_steps {inputs.num_warmup_steps} 
-      --seed {inputs.seed} 
-      --actor_zero_stage {inputs.actor_zero_stage} 
-      --critic_zero_stage {inputs.critic_zero_stage} 
-      --actor_lora_dim {inputs.actor_lora_dim} 
-      --actor_lora_module_name {inputs.actor_lora_module_name} 
-      --critic_lora_dim {inputs.critic_lora_dim} 
-      --critic_lora_module_name {inputs.critic_lora_module_name} 
+      --gradient_accumulation_steps {inputs.gradient_accumulation_steps}
+      --lr_scheduler_type {inputs.lr_scheduler_type}
+      --num_warmup_steps {inputs.num_warmup_steps}
+      --seed {inputs.seed}
+      --actor_zero_stage {inputs.actor_zero_stage}
+      --critic_zero_stage {inputs.critic_zero_stage}
+      --actor_lora_dim {inputs.actor_lora_dim}
+      --actor_lora_module_name {inputs.actor_lora_module_name}
+      --critic_lora_dim {inputs.critic_lora_dim}
+      --critic_lora_module_name {inputs.critic_lora_module_name}
       [--stop_token {inputs.stop_token}]
       [--normalize_rm_scale {inputs.normalize_rm_scale}]
       --disable_actor_dropout
       --only_optimize_lora
-      --deepspeed 
+      --deepspeed
       [--inference_tp_size {inputs.inference_tp_size}]
       [--tp_gather_partition_size {inputs.tp_gather_partition_size}]
       [--exact_reward_function {inputs.exact_reward_function}]
-      --output_dir {outputs.output_dir} 
+      --output_dir {outputs.output_dir}
 
 # --enable_hybrid_engine 
   # [--save_strategy {inputs.save_strategy}]

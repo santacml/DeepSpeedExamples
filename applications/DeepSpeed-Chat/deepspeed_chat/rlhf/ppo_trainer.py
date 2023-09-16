@@ -53,8 +53,8 @@ class DeepSpeedPPOTrainer():
         self.end_of_conversation_token_id = self.tokenizer(args.end_of_conversation_token)['input_ids'][-1]
         self.z3_enabled = args.actor_zero_stage == 3
 
-        # Those value can be changed
-        self.kl_ctl = 0.1
+        # Those values can be changed
+        self.kl_ctl = 0.02
         self.clip_reward_value = 5
         self.cliprange = 0.2
         self.cliprange_value = 0.2

@@ -27,7 +27,7 @@ babela100_ds = Datastore.get(ws, 'babela100')
 
 installation_cmds = "pip install -e . && "
 
-script_run_config = ScriptRunConfig(
+sft_run_config = ScriptRunConfig(
     source_directory=os.path.join(root_dir),
     command=[
         installation_cmds + "python", "./examples/training/step1_supervised_finetuning/main.py",
@@ -57,5 +57,49 @@ script_run_config = ScriptRunConfig(
     distributed_job_config=PyTorchConfiguration(process_count=4, node_count=1),
 )
 
+model_dir_dataset = Dataset.File.from_files(path=[(babela100_ds, "oss_rlhf/logs-2023-09-11-211800")], validate=True).as_mount()
+rl_run_config = ScriptRunConfig(
+    source_directory=os.path.join(root_dir),
+    command=[
+        installation_cmds + "python", "./examples/training/step3_rlhf_finetuning/main.py",
+        "--data_path", Dataset.File.from_files(babela100_ds.path("misantac_oss_rlhf/stackllama_md_processed/stackllama_md_filtered_processed_150000/**")).as_mount(),
+        "--data_split", "0,0,1",
+        "--actor_model_dir", model_dir_dataset,
+        "--actor_model_name_or_path", "sft",
+        "--critic_model_dir", model_dir_dataset,
+        "--critic_model_name_or_path", "rm",
+        "--num_padding_at_beginning", "0",
+        "--per_device_generation_batch_size", "1",
+        "--per_device_training_batch_size", "3",
+        "--generation_batches", "1",
+        "--ppo_epochs", "4",
+        "--max_answer_seq_len", "400",
+        "--max_prompt_seq_len", "400",
+        "--actor_learning_rate", "5e-4",
+        "--critic_learning_rate", "5e-5",
+        "--actor_weight_decay", "0",
+        "--critic_weight_decay", "0",
+        "--num_train_epochs", "1",
+        "--gradient_accumulation_steps", "25",
+        "--lr_scheduler_type", "cosine",
+        "--num_warmup_steps", "100",
+        "--seed", "42",
+        "--actor_zero_stage", "1",
+        "--critic_zero_stage", "1",
+        "--actor_lora_dim", "128",
+        "--actor_lora_module_name", "layers",
+        "--critic_lora_dim", "128",
+        "--critic_lora_module_name", "layers",
+        "--normalize_rm_scale", "1.0",
+        "--disable_actor_dropout",
+        "--only_optimize_lora",
+        "--deepspeed",
+        "--output_dir", OutputFileDatasetConfig(destination=(default_ds, "rlhf_models/rl"))
+    ],
+    compute_target=ComputeTarget(workspace=ws, name="A100-80G-PCIE-westus3"),
+    environment=Environment.get(workspace=ws, name="hydra-rlhf-env"),
+    distributed_job_config=PyTorchConfiguration(process_count=4, node_count=1),
+)
+
 exp = Experiment(workspace=ws, name="deepspeed-chat-14b84db0")
-exp.submit(config=script_run_config)
+exp.submit(config=rl_run_config)
