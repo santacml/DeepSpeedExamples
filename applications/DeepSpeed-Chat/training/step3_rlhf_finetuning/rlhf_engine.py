@@ -214,6 +214,8 @@ class DeepSpeedRLHFEngine():
         ds_eval_config[
             'train_batch_size'] = self.args.per_device_training_batch_size * torch.distributed.get_world_size(
             ) * self.args.gradient_accumulation_steps
+        
+        print("misantac setting rlhf_training false to manually load critic properly")
 
         # Model
         critic_model = create_critic_model(
@@ -221,7 +223,7 @@ class DeepSpeedRLHFEngine():
             tokenizer=self.tokenizer,
             ds_config=ds_eval_config,
             num_padding_at_beginning=self.args.num_padding_at_beginning,
-            rlhf_training=True,
+            rlhf_training=False, 
             disable_dropout=self.args.disable_critic_dropout,
             zero_stage=self.args.critic_zero_stage)
 

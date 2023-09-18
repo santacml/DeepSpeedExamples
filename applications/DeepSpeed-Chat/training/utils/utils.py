@@ -161,7 +161,6 @@ def get_all_reduce_mean(tensor):
     tensor = tensor / torch.distributed.get_world_size()
     return tensor
 
-
 # This function is a modified version of code available in the from_pretrained API of HuggingFace Transformers
 # The code is copied and modified from: https://github.com/huggingface/transformers/blob/5ee9693a1c77c617ebc43ef20194b6d3b674318e/src/transformers/modeling_utils.py#L498
 # This function helps load a HF format checkpoint into a DeepSpeed wrapped model that has been sharded using ZeRO Stage 3

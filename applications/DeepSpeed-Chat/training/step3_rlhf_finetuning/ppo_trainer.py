@@ -63,7 +63,7 @@ class DeepSpeedPPOTrainer():
         self.z3_enabled = args.actor_zero_stage == 3
 
         # Those value can be changed
-        self.kl_ctl = 0.1
+        self.kl_ctl = 0.02
         self.clip_reward_value = 5
         self.cliprange = 0.2
         self.cliprange_value = 0.2
@@ -122,6 +122,9 @@ class DeepSpeedPPOTrainer():
         if self.reward_tokenizer is not None:
             # decode and reencode prompts
             reward_prompts_raw = self.tokenizer.batch_decode(prompts, skip_special_tokens=True)
+            # print("raw reward prompts")
+            # print(reward_prompts_raw)
+
             # combine for reward seq
             # reward_seq = torch.cat([reward_prompts, reward_ans], dim=1)
 
@@ -148,7 +151,7 @@ class DeepSpeedPPOTrainer():
                 reward_prompts.append(prompt_token[key_word])
             
             reward_prompts_batched = {}
-            pad_token_id = self.tokenizer.pad_token_id
+            pad_token_id = self.reward_tokenizer.pad_token_id
 
             prompt = pad_sequence([f for f in reward_prompts],
                                 padding_value=pad_token_id,
@@ -181,12 +184,14 @@ class DeepSpeedPPOTrainer():
             reward_ans_raw = self.tokenizer.batch_decode(ans, skip_special_tokens=True)
             reward_ans = self.reward_tokenizer(reward_ans_raw, return_tensors="pt", padding="max_length", truncation=True, max_length=self.max_answer_seq_len)
 
-            # reward_ans = [
-            #     self.reward_tokenizer(ans, return_tensors="pt", padding=True, max_) for ans in reward_ans_raw
-            # ]
+            # print("reward_ans")
+            # print(reward_ans)
 
             # cat reward prompts and ans
             reward_seq = torch.cat([reward_prompts_batched["prompt"], reward_ans["input_ids"]], dim=1)
+
+            # print("reward seq")
+            # print(reward_seq)
 
 
 
@@ -206,11 +211,18 @@ class DeepSpeedPPOTrainer():
         with torch.no_grad():
             reward_seq = reward_seq.to(self.reward_model.device)
             if reward_seq is not None:
+                torch.set_printoptions(threshold=10_000)
+                # print("reward seq")
+                # print(reward_seq)
                 reward_attention_mask = reward_seq.not_equal(self.reward_tokenizer.pad_token_id).long()
+                # print("reward attention mask")
+                # print(reward_attention_mask)
                 reward_score = self.reward_model.forward_value(
                     reward_seq, reward_attention_mask,
                     prompt_length=reward_prompt_len)['chosen_end_scores'].detach(
                     )
+                # print("reward score")
+                # print(reward_score)
             else:
                 reward_score = self.reward_model.forward_value(
                     seq, attention_mask,

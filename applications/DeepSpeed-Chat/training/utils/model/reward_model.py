@@ -162,6 +162,8 @@ class RewardModel(nn.Module):
             **kwargs)
         hidden_states = transformer_outputs[0]
         values = self.v_head(hidden_states).squeeze(-1)
+        if self.bias_scale_set:
+            values = (values+self.bias)*self.scale
         if return_value_only:
             return values
         else:

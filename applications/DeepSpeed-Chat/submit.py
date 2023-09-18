@@ -129,8 +129,8 @@ def main():
         sft_lr = 1e-6
 
         # rm_e = 5
-        rm_e = 1
-        rm_lr = 1e-5
+        rm_e = 2
+        rm_lr = 1e-6
         rm_lora = 0
         
         reward_loss_mult=.1
@@ -185,6 +185,8 @@ def main():
             # rm_model_weights_input = Dataset.File.from_files(path=[(ds, "misantac_oss_rlhf/sep_rm/rlhf-reward-v10-DistillGPT4PreferencesV2-bs64-llama2-7b-noMath-combinedAxioms0-5/checkpoint-16000_automodel/")],validate=True).as_mount()
 
             rm_model_weights_input = None
+
+            # rm_model_weights_input = Dataset.File.from_files(path=[(ds, "misantac_oss_rlhf/logs-2023-06-20-165325/rm")],validate=True).as_mount()
 
             reward_model_name_or_path =  "OpenAssistant/oasst-rm-2-pythia-6.9b-epoch-1"
             
