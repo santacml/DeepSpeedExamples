@@ -73,7 +73,7 @@ def main():
             data_path=data_eval,
         )
         eval_rl.runsettings.resource_layout.configure(instance_count=num_nodes, process_count_per_node=processes_per_node)
-        eval_sft.outputs.output_dir.configure(
+        eval_rl.outputs.output_dir.configure(
             mode="mount",
             path_on_datastore=os.path.join(output_path, "rl-gen"),
             datastore=datastore
