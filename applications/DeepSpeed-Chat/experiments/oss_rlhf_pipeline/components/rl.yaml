@@ -24,7 +24,6 @@ environment:
         - pandas
         - azureml-core
         - tensorboard
-        # - git+https://github.com/huggingface/transformers
 
   os: Linux
 inputs: 
@@ -242,6 +241,7 @@ launcher:
       [--stop_token {inputs.stop_token}]
       [--normalize_rm_scale {inputs.normalize_rm_scale}]
       --disable_actor_dropout
+      --disable_critic_dropout
       --only_optimize_lora
       --deepspeed
       [--inference_tp_size {inputs.inference_tp_size}]
@@ -249,14 +249,7 @@ launcher:
       [--exact_reward_function {inputs.exact_reward_function}]
       --output_dir {outputs.output_dir}
 
-# --enable_hybrid_engine 
-  # [--save_strategy {inputs.save_strategy}]
-
-
-#  --actor_gradient_checkpointing \
-# &> {outputs.output_dir}/training.log
-
 tags: 
-  author: misantac@microsoft.com
+  author: tscience-rlhf
 type: DistributedComponent
 version: 0.1.0

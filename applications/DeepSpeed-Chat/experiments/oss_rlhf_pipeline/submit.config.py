@@ -176,7 +176,7 @@ def main():
     pipeline = build_pipeline()
     run = pipeline.submit(
         tags=tags,
-        experiment_name="deepspeed-chat",
+        experiment_name="deepspeed-chat-14b84db0",
         regenerate_outputs=False,
     )
 

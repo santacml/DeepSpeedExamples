@@ -1,0 +1,76 @@
+$schema: https://componentsdk.azureedge.net/jsonschema/DistributedComponent.json
+description: "Compare RLHF Evaluation"
+display_name: Compare RLHF Evaluation
+environment:
+  docker: 
+    image: pytorch/pytorch:2.0.1-cuda11.7-cudnn8-devel
+  conda:
+    conda_dependencies:
+      name: project_environment
+      channels:
+      - defaults
+      dependencies:
+      - python=3.8.13
+      - pip:
+        - einops
+        - opt-einsum
+        - datasets>=2.8.0
+        - sentencepiece>=0.1.97
+        - protobuf==3.20.3
+        - accelerate>=0.15.0
+        - torch>=1.12.0
+        - deepspeed>=0.9.2
+        - transformers>=4.29.0
+        - pandas
+        - azureml-core
+        - rouge-score
+
+  os: Linux
+inputs: 
+  baseline_model_outputs: 
+    description: Path for baseline outputs
+    optional: false
+    default: ""
+    type: path
+  finetune_model_outputs: 
+    description: Path for finetune outputs
+    optional: false
+    type: path
+  num_padding_at_beginning: 
+    description: num_padding_at_beginning
+    optional: false
+    default: 1
+    type: int
+  reward_model_path: 
+    description: Model path for reward model, if judging reward model outputs.
+    optional: true
+    default: ""
+    type: path
+
+is_deterministic: true
+meta: 
+  requireGpu: true
+name: ds_rlhf.eval
+outputs: 
+  output_dir: 
+    description: Output directory
+    optional: false
+    type: path
+
+code: ../../../
+
+launcher:
+  type: torch.distributed
+  additional_arguments: >    
+    pip install -e . && python ./examples/evaluation/compare_generations.py
+      --baseline_model_outputs {inputs.baseline_model_outputs} 
+      --finetune_model_outputs {inputs.finetune_model_outputs} 
+      --num_padding_at_beginning {inputs.num_padding_at_beginning}
+      [--reward_model_path {inputs.reward_model_path}]
+      --output_dir {outputs.output_dir}
+
+
+tags: 
+  author: tscience-rlhf
+type: DistributedComponent
+version: 0.1.0

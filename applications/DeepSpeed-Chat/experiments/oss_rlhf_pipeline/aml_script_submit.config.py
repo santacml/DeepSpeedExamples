@@ -15,10 +15,10 @@ from azureml.core import Environment
 
 from hydra_rlhf.azureml_utils import compute_utils, environment_utils
 
-root_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), os.pardir)
+root_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), os.pardir, os.pardir)
 
 ws = Workspace.from_config(
-    path=os.path.join(os.path.dirname(os.path.realpath(__file__)), os.pardir, 'aml_ws_configs', 'tscience_research.json'),
+    path=os.path.join(root_dir, 'aml_ws_configs', 'tscience_research.json'),
     auth=InteractiveLoginAuthentication(tenant_id="72f988bf-86f1-41af-91ab-2d7cd011db47")
 )
 
@@ -69,13 +69,13 @@ rl_run_config = ScriptRunConfig(
         "--critic_model_dir", model_dir_dataset,
         "--critic_model_name_or_path", "rm",
         "--num_padding_at_beginning", "0",
-        "--per_device_generation_batch_size", "1",
-        "--per_device_training_batch_size", "3",
-        "--generation_batches", "1",
+        "--per_device_training_batch_size", "2",
+        "--per_device_generation_batch_size", "2",
+        "--generation_batches", "2",
         "--ppo_epochs", "4",
         "--max_answer_seq_len", "400",
         "--max_prompt_seq_len", "400",
-        "--actor_learning_rate", "5e-4",
+        "--actor_learning_rate", "5e-5",
         "--critic_learning_rate", "5e-5",
         "--actor_weight_decay", "0",
         "--critic_weight_decay", "0",
@@ -92,6 +92,7 @@ rl_run_config = ScriptRunConfig(
         "--critic_lora_module_name", "layers",
         "--normalize_rm_scale", "1.0",
         "--disable_actor_dropout",
+        "--disable_critic_dropout",
         "--only_optimize_lora",
         "--deepspeed",
         "--output_dir", OutputFileDatasetConfig(destination=(default_ds, "rlhf_models/rl"))
