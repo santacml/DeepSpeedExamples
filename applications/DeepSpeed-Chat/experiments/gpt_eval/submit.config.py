@@ -45,8 +45,8 @@ def main():
     model_gen_func = Component.from_yaml(ws, yaml_file=os.path.join(components_dir, 'model_generation.yaml'))
     compare_gen_func = Component.from_yaml(ws, yaml_file=os.path.join(components_dir, 'compare_generations.yaml'))
 
-    sft_model_outputs = Dataset.File.from_files(path=[(datastore, "oss_rlhf/logs-2023-09-19-231204/sft-gen/")], validate=True).as_mount()
-    rl_model_outputs = Dataset.File.from_files(path=[(datastore, "oss_rlhf/logs-2023-09-19-231204/rl-gen/")], validate=True).as_mount()
+    sft_model_outputs = None
+    rl_model_outputs = None
 
     ################################################
     # Define pipeline (configure and connect components)
