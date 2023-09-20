@@ -155,6 +155,6 @@ launcher:
 
 
 tags: 
-  author: tscience-rlhf
+  author: aims-research
 type: DistributedComponent
 version: 0.1.0
