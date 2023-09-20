@@ -5,7 +5,7 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "aml-launch-components",
+      "name": "aml-launch-oss-rlhf-pipeline",
       "type": "python",
       "request": "launch",
       "cwd": "${workspaceFolder}/experiments/oss_rlhf_pipeline/",
@@ -19,6 +19,15 @@
       "request": "launch",
       "cwd": "${workspaceFolder}",
       "program": "experiments/aml_script_submit.config.py",
+      "justMyCode": false,
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "aml-launch-gen-eval",
+      "type": "python",
+      "request": "launch",
+      "cwd": "${workspaceFolder}/experiments/gpt_eval/",
+      "program": "submit.config.py",
       "justMyCode": false,
       "console": "integratedTerminal"
     },
