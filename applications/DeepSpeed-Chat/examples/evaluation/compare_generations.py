@@ -3,6 +3,7 @@
 
 # DeepSpeed Team
 import argparse
+import deepspeed
 import logging
 import torch
 import sys
@@ -76,6 +77,12 @@ def parse_args():
         help="OPT model has a fixed number (1) of padding tokens at the beginning of the input. We did not see this in other models but keep it as an option for now."
     )
     parser.add_argument(
+        "--local_rank",
+        type=int,
+        default=-1,
+        help="local_rank for distributed training on gpus"
+    )
+    parser.add_argument(
         "--output_dir",
         type=str,
         default=None,
@@ -130,6 +137,24 @@ def check_dir_get_file(path):
 def main():
     args = parse_args()
 
+    if "LOCAL_RANK" in os.environ:
+        local_rank = os.environ.get('LOCAL_RANK')
+        args.local_rank = int(local_rank)
+        print("My local rank is", args.local_rank)
+
+        torch.cuda.set_device(args.local_rank)
+
+    if args.local_rank == -1:
+        device = torch.device("cuda")
+    else:
+        torch.cuda.set_device(args.local_rank)
+        device = torch.device("cuda", args.local_rank)
+        # Initializes the distributed backend which will take care of sychronizing nodes/GPUs
+        # torch.distributed.init_process_group(backend='nccl')
+        deepspeed.init_distributed()
+
+    args.global_rank = torch.distributed.get_rank()
+
     device = torch.device("cuda:0")
 
     args.zero_stage = 3
@@ -166,7 +191,6 @@ def main():
     scorer = rouge_scorer.RougeScorer(['rouge1', 'rougeL'], use_stemmer=True)
     baseline_rouge_scores = []
     finetune_rouge_scores = []
-
 
     tokenizer = AutoTokenizer.from_pretrained(
         args.reward_model_path,

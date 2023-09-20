@@ -45,6 +45,9 @@ def main():
     model_gen_func = Component.from_yaml(ws, yaml_file=os.path.join(components_dir, 'model_generation.yaml'))
     compare_gen_func = Component.from_yaml(ws, yaml_file=os.path.join(components_dir, 'compare_generations.yaml'))
 
+    sft_model_outputs = Dataset.File.from_files(path=[(datastore, "oss_rlhf/logs-2023-09-19-231204/sft-gen/")], validate=True).as_mount()
+    rl_model_outputs = Dataset.File.from_files(path=[(datastore, "oss_rlhf/logs-2023-09-19-231204/rl-gen/")], validate=True).as_mount()
+
     ################################################
     # Define pipeline (configure and connect components)
     ################################################
@@ -53,35 +56,43 @@ def main():
         default_compute_target=compute_name,
     )
     def build_pipeline():
-        eval_sft = model_gen_func(
-            model_path=sft_model_path,
-            num_padding_at_beginning=0,
-            max_new_tokens=512,
-            data_path=data_eval,
-        )
-        eval_sft.runsettings.resource_layout.configure(instance_count=num_nodes, process_count_per_node=processes_per_node)
-        eval_sft.outputs.output_dir.configure(
-            mode="mount",
-            path_on_datastore=os.path.join(output_path, "sft-gen"),
-            datastore=datastore
-        )
+        if sft_model_outputs is None:
+            eval_sft = model_gen_func(
+                model_path=sft_model_path,
+                num_padding_at_beginning=0,
+                max_new_tokens=512,
+                data_path=data_eval,
+            )
+            eval_sft.runsettings.resource_layout.configure(instance_count=num_nodes, process_count_per_node=processes_per_node)
+            eval_sft.outputs.output_dir.configure(
+                mode="mount",
+                path_on_datastore=os.path.join(output_path, "sft-gen"),
+                datastore=datastore
+            )
+            baseline_model_outputs = eval_sft.outputs.output_dir
+        else:
+            baseline_model_outputs = sft_model_outputs
 
-        eval_rl = model_gen_func(
-            model_path=rl_model_path,
-            num_padding_at_beginning=0,
-            max_new_tokens=512,
-            data_path=data_eval,
-        )
-        eval_rl.runsettings.resource_layout.configure(instance_count=num_nodes, process_count_per_node=processes_per_node)
-        eval_rl.outputs.output_dir.configure(
-            mode="mount",
-            path_on_datastore=os.path.join(output_path, "rl-gen"),
-            datastore=datastore
-        )
+        if rl_model_outputs is None:
+            eval_rl = model_gen_func(
+                model_path=rl_model_path,
+                num_padding_at_beginning=0,
+                max_new_tokens=512,
+                data_path=data_eval,
+            )
+            eval_rl.runsettings.resource_layout.configure(instance_count=num_nodes, process_count_per_node=processes_per_node)
+            eval_rl.outputs.output_dir.configure(
+                mode="mount",
+                path_on_datastore=os.path.join(output_path, "rl-gen"),
+                datastore=datastore
+            )
+            finetune_model_outputs = eval_rl.outputs.output_dir
+        else:
+            finetune_model_outputs = rl_model_outputs
 
         eval_sft_vs_rl = compare_gen_func(
-            baseline_model_outputs=eval_sft.outputs.output_dir,
-            finetune_model_outputs=eval_rl.outputs.output_dir,
+            baseline_model_outputs=baseline_model_outputs,
+            finetune_model_outputs=finetune_model_outputs,
             num_padding_at_beginning=0,
             reward_model_path=rm_model_path,
         )
