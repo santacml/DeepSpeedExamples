@@ -5,14 +5,31 @@
 import torch
 from torch import nn
 
+class PhiTransformer(nn.Module):
+    def __init__(self, layers):
+        super().__init__()
+        self.layers = layers[:-1]
+
+        print(self.layers)
+        print(type(self.layers[-1]))
+
+    def forward(self, input_ids, past_key_values = None, **kwargs):
+        if not past_key_values:
+            hidden_layer = self.layers(input_ids)
+        else:
+            hidden_layer = self.layers[0](input_ids)
+            for module in self.layers[1]:
+                hidden_layer = module(hidden_layer, past_cache=past_key_values)
+
+        return [hidden_layer]
 
 ## Note that the following code is modified from
 ## https://github.com/CarperAI/trlx/blob/main/examples/summarize_rlhf/reward_model/reward_model.py
 class RewardModel(nn.Module):
 
-    def __init__(self, base_model, tokenizer, num_padding_at_beginning=0, v_head_weights = None):
+    def __init__(self, base_model, tokenizer, num_padding_at_beginning=0, v_head_weights = None, config=None):
         super().__init__()
-        self.config = base_model.config
+        self.config = base_model.config if config is None else config
         self.num_padding_at_beginning = num_padding_at_beginning
         if hasattr(self.config, "word_embed_proj_dim"):
             # `OPT` models use word_embed_proj_dim as final output

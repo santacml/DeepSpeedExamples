@@ -364,7 +364,7 @@ def main():
             model.backward(loss)
             model.step()
             end = time.time()
-            if torch.distributed.get_rank() == 0:
+            if torch.distributed.get_rank() == 0 and hasattr(model, "model"):
                 print_throughput(model.model, args, end - start,
                                  args.global_rank)
             

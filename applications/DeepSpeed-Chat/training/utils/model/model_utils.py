@@ -23,29 +23,41 @@ def create_hf_model(model_class,
                     ds_config=None,
                     config_only=False,
                     disable_dropout=False):
-    model_config = AutoConfig.from_pretrained(model_name_or_path)
-    if disable_dropout:
-        model_config.dropout = 0.0
-    # Note: dschf is defined in function scope to avoid global effects
-    # https://huggingface.co/docs/transformers/main_classes/deepspeed#nontrainer-deepspeed-integration
-    if ds_config is not None and ds_config["zero_optimization"]["stage"] == 3:
-        dschf = HfDeepSpeedConfig(ds_config)
+    
+    if False:
+        model_config = AutoConfig.from_pretrained(model_name_or_path, trust_remote_code=True)
+        if disable_dropout:
+            model_config.dropout = 0.0
+        # Note: dschf is defined in function scope to avoid global effects
+        # https://huggingface.co/docs/transformers/main_classes/deepspeed#nontrainer-deepspeed-integration
+        if ds_config is not None and ds_config["zero_optimization"]["stage"] == 3:
+            dschf = HfDeepSpeedConfig(ds_config)
+        else:
+            dschf = None
+        if config_only:
+            # the weight loading is handled by create critic model
+            model = model_class.from_config(model_config)
+        else:
+            model = model_class.from_pretrained(
+                model_name_or_path,
+                from_tf=bool(".ckpt" in model_name_or_path),
+                config=model_config,
+                trust_remote_code=True)
     else:
-        dschf = None
-    if config_only:
-        # the weight loading is handled by create critic model
-        model = model_class.from_config(model_config)
-    else:
-        model = model_class.from_pretrained(
-            model_name_or_path,
-            from_tf=bool(".ckpt" in model_name_or_path),
-            config=model_config)
+        from transformers import AutoModelForCausalLM
+        model = AutoModelForCausalLM.from_pretrained(model_name_or_path, trust_remote_code=True)
+        if ds_config is not None and ds_config["zero_optimization"]["stage"] == 3:
+            dschf = HfDeepSpeedConfig(ds_config)
+        else:
+            dschf = None
 
     model.config.end_token_id = tokenizer.eos_token_id
     model.config.pad_token_id = model.config.eos_token_id
-    model.resize_token_embeddings(int(
-        8 *
-        math.ceil(len(tokenizer) / 8.0)))  # make the vocab size multiple of 8
+    # model.resize_token_embeddings(int(
+        # 8 *
+        # math.ceil(len(tokenizer) / 8.0)))  # make the vocab size multiple of 8
+
+    # if config_only:
 
     return model
 
@@ -71,6 +83,10 @@ def create_critic_model(model_name_or_path,
         base_critic_model = create_hf_model(AutoModelForSequenceClassification, model_name_or_path, tokenizer,
                                     ds_config, rlhf_training, disable_dropout)
         seq_class = True
+        
+    from .reward_model import PhiTransformer
+    base_critic_model = PhiTransformer(base_critic_model.layers)
+    config = AutoConfig.from_pretrained("microsoft/phi-1_5", trust_remote_code=True)
 
     end = time.time()
     if torch.distributed.get_rank() == 0:
@@ -88,16 +104,17 @@ def create_critic_model(model_name_or_path,
         critic_model,
         tokenizer,
         num_padding_at_beginning=num_padding_at_beginning,
-        v_head_weights=v_head_weights)
+        v_head_weights=v_head_weights,
+        config=config)
 
     if rlhf_training:
         if not os.path.isdir(model_name_or_path):
             # we don't know if the model is in one file or multiple files, so we must download from hf hub
             start = time.time()
             try:
-                model = AutoModel.from_pretrained(model_name_or_path)
+                model = AutoModel.from_pretrained(model_name_or_path, trust_remote_code=True)
             except:
-                model = AutoModelForSequenceClassification.from_pretrained(model_name_or_path)
+                model = AutoModelForSequenceClassification.from_pretrained(model_name_or_path, trust_remote_code=True)
             model_ckpt_state_dict = model.state_dict()
             end = time.time()
             if torch.distributed.get_rank() == 0:
@@ -105,6 +122,9 @@ def create_critic_model(model_name_or_path,
 
             if isinstance(base_critic_model, GPTNeoXRewardModel):
                 model_ckpt_state_dict = fix_state_dict_keys(model_ckpt_state_dict)
+
+                print("critic model state dict keys")
+                print(critic_model.state_dict().keys())
 
         else:
             # load critic model from checkpoint
@@ -124,11 +144,18 @@ def create_critic_model(model_name_or_path,
         # load critic model from checkpoint with zero-stage 3 compatibility
         # this functionality may be moved to DS checkpoint load API in future
         start = time.time()
-        load_state_dict_into_model(critic_model,
+        missing_keys, unexpected_keys, error_msgs = load_state_dict_into_model(critic_model,
                                    model_ckpt_state_dict,
                                    "",
                                    zero_stage=zero_stage)
         end = time.time()
+
+        print("missing keys")
+        print(missing_keys)
+        print("unexpected keys")
+        print(unexpected_keys)
+        print("error msgs")
+        print(error_msgs)
         if torch.distributed.get_rank() == 0:
             print(f"> Loading model state dict took {end - start} seconds")
 

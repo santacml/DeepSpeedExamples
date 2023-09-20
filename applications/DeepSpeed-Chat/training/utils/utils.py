@@ -35,6 +35,8 @@ class AzureMLLogger(Logger):
         self.run = azureml_run
     
     def _log(self, name, value, step=None):
+        if value == None:
+            value = 0
         self.run.log(name, value, description=name)
 
 class TensorBoardLogger(Logger):
@@ -175,6 +177,8 @@ def load_state_dict_into_model(model_to_load=None,
     if metadata is not None:
         state_dict._metadata = metadata
 
+    missing_keys = []
+    unexpected_keys = []
     error_msgs = []
 
     # PyTorch's `_load_from_state_dict` does not copy parameters in a module's descendants
@@ -182,7 +186,7 @@ def load_state_dict_into_model(model_to_load=None,
     def load(module: nn.Module, state_dict, prefix=""):
         local_metadata = {} if metadata is None else metadata.get(
             prefix[:-1], {})
-        args = (state_dict, prefix, local_metadata, True, [], [], error_msgs)
+        args = (state_dict, prefix, local_metadata, True, missing_keys, unexpected_keys, error_msgs)
         # Parameters of module and children will start with prefix. We can exit early if there are none in this
         # state_dict
         if len([key for key in state_dict if key.startswith(prefix)]) > 0:
@@ -215,7 +219,7 @@ def load_state_dict_into_model(model_to_load=None,
     # it's safe to delete it.
     del state_dict
 
-    return error_msgs
+    return missing_keys, unexpected_keys, error_msgs
 
 
 def get_all_gather(tensor):

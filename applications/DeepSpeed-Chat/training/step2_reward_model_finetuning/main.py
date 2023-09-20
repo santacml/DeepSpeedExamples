@@ -218,7 +218,7 @@ def main():
 
     args.global_rank = torch.distributed.get_rank()
 
-    azureml_logger = AzureMLLogger(args)
+    azureml_logger = AzureMLLogger(args.global_rank)
 
     ds_config = get_train_ds_config(offload=args.offload,
                                     stage=args.zero_stage,

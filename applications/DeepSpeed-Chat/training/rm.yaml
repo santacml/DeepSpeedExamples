@@ -33,7 +33,7 @@ inputs:
   data_path: 
     description: Training dataset
     optional: false
-    type: string
+    type: path
   data_split:
     description: Comma-separated list of proportions for training
     optional: false

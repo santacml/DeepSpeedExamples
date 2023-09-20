@@ -62,12 +62,15 @@ def get_info(cluster):
 def main():
     # model = "opt_1.3b"
     # model = "llama_2_7b"
-    model = "sep_rm"
-    model = "pythia_reward"
+    # model = "sep_rm"
+    # model = "pythia_reward"
+
+    model = "phi15"
 
     # TASK = "Dahoas/rm-static"
-    TASK = "sep_rm"
+    # TASK = "sep_rm"
 
+    TASK = "gpt4llm"
 
     
     timestamp = datetime.datetime.fromtimestamp(time.time()).strftime('%Y-%m-%d-%H%M%S')
@@ -105,6 +108,7 @@ def main():
     # data_split="3,3,4"
 
     model_name_or_path = None
+    model_dir = None
 
     reward_model_dir = None
     reward_model_name_or_path = None
@@ -196,6 +200,72 @@ def main():
         else:
             0/0
 
+
+    elif TASK == "gpt4llm":
+        default_compute_target, ws, ds, process_count_per_node = get_info("alexander")
+        
+        # default_compute_target, ws, ds, process_count_per_node = get_info("tscience-2")
+        # instance_count = 2
+
+        all_datasets_path =  Dataset.File.from_files(path=[(ds, "misantac_oss_rlhf/instruct_gpt4_labeled_data/")],validate=True).as_mount()
+
+
+        per_device_train_batch_size = 3
+        per_device_eval_batch_size = 4
+        
+        gradient_accumulation_steps=1
+        
+        sft_lora = 0
+        sft_e = 5
+        sft_lr = 1e-6
+
+        # rm_e = 5
+        rm_e = 5
+        rm_lr = 1e-6
+        rm_lora = 0
+        
+        reward_loss_mult=.1
+
+
+        ppo_per_device_train_batch_size = 1
+        per_device_mini_train_batch_size= 2
+        # ppo_gradient_accumulation_steps=20
+        ppo_gradient_accumulation_steps=30
+    
+    
+        
+        actor_lora_learning_rate=5e-4
+        critic_lora_learning_rate=5e-4
+        
+        max_prompt_seq_len = 256
+        max_answer_seq_len = 256
+
+        # '''
+        
+
+        if model == "phi15":
+
+            
+            model_weights = None
+            model_name_or_path = "microsoft/phi-1_5"
+            num_padding_at_beginning = 0
+
+            sft_model_weights_input = Dataset.File.from_files(path=[(ds, "misantac_oss_rlhf/sep_rm/logs-2023-09-19-160343/sft")],validate=True).as_mount()
+
+
+            rm_model_weights_input = None
+
+            rm_model_weights_input = Dataset.File.from_files(path=[(ds, "misantac_oss_rlhf/sep_rm/logs-2023-09-19-160343/rm")],validate=True).as_mount()
+
+            # reward_model_name_or_path =  "OpenAssistant/oasst-rm-2-pythia-6.9b-epoch-1"
+            
+            # model_dir = Dataset.File.from_files(path=[(ds, "llama-2/Llama-2-7b-hf/")],validate=True).as_mount()
+
+
+        else:
+            0/0
+
+      
         
     ppo_instance_count = instance_count
 
@@ -221,15 +291,6 @@ def main():
         yaml_file= Path(__file__).parent / "training" / "ppo.yaml"
     )
 
-
-    
-    # if per_device_train_batch_size > 1 and instance_count == 2:
-    #     print("adjusting rm batch for 2 instances")
-    #     rm_per_device_train_batch_size = int(per_device_train_batch_size/2)
-    #     per_device_eval_batch_size = int(per_device_eval_batch_size/2)
-    #     rm_gradient_accumulation_steps = int(rm_gradient_accumulation_steps*2)
-    # else:
-    #     rm_per_device_train_batch_size = per_device_train_batch_size
 
     @dsl.pipeline(
         name=f"{timestamp} {TASK} {model}",
@@ -313,9 +374,121 @@ def main():
 
             
 
+        
+        # '''   ppo without sft
+
+        if ppo_baseline_input is None:
+            ppo = ppo_func(
+                data_path=all_datasets_path,
+                data_split="0,0,1",
+
+                actor_model_dir=None,
+                actor_model_name_or_path=model_name_or_path,
+                critic_model_dir=rm_model_weights,
+                critic_model_name_or_path=None,
+
+                num_padding_at_beginning=num_padding_at_beginning,
+                per_device_generation_batch_size=per_device_train_batch_size,
+                per_device_training_batch_size=per_device_mini_train_batch_size,
+                generation_batches= 1,
+                ppo_epochs=1,
+                max_answer_seq_len=max_answer_seq_len,
+                max_prompt_seq_len=max_prompt_seq_len,
+
+                actor_lora_learning_rate=actor_lora_learning_rate,
+                critic_lora_learning_rate=critic_lora_learning_rate,
+
+                actor_weight_decay=0,
+                critic_weight_decay=0,
+
+                num_train_epochs=1,
+                lr_scheduler_type="cosine",
+                gradient_accumulation_steps=ppo_gradient_accumulation_steps,
+                num_warmup_steps=100,
+                seed=42,
+                actor_zero_stage=ppo_zero_stage,
+                critic_zero_stage=ppo_zero_stage,
+                actor_lora_dim=128,
+                actor_lora_module_name=lora_module_name,
+                critic_lora_dim=128,
+                critic_lora_module_name=lora_module_name,
+
+            )
+
+            ppo.runsettings.resource_layout.configure(instance_count=ppo_instance_count, process_count_per_node=process_count_per_node)
+
+            ppo.outputs.output_dir.configure(
+                mode="mount",
+                path_on_datastore=output_path + "/ppo",
+                datastore=ds
+            )
+            
+
+            ppo_baseline = ppo.outputs.output_dir
+        else:
+            ppo_baseline = ppo_baseline_input
+
         # '''
 
-        # ''' reg lora ppo
+
+
+        # ''' normal
+
+        if ppo_baseline_input is None:
+            ppo = ppo_func(
+                data_path=all_datasets_path,
+                data_split="0,0,1",
+
+                actor_model_dir=sft_model_weights,
+                actor_model_name_or_path=None,
+                critic_model_dir=rm_model_weights,
+                critic_model_name_or_path=None,
+                num_padding_at_beginning=num_padding_at_beginning,
+                per_device_generation_batch_size=per_device_train_batch_size,
+                per_device_training_batch_size=per_device_mini_train_batch_size,
+                generation_batches= 1,
+                ppo_epochs=1,
+                max_answer_seq_len=max_answer_seq_len,
+                max_prompt_seq_len=max_prompt_seq_len,
+
+                actor_lora_learning_rate=actor_lora_learning_rate,
+                critic_lora_learning_rate=critic_lora_learning_rate,
+
+                actor_weight_decay=0,
+                critic_weight_decay=0,
+
+                num_train_epochs=1,
+                lr_scheduler_type="cosine",
+                gradient_accumulation_steps=ppo_gradient_accumulation_steps,
+                num_warmup_steps=100,
+                seed=42,
+                actor_zero_stage=ppo_zero_stage,
+                critic_zero_stage=ppo_zero_stage,
+                actor_lora_dim=128,
+                actor_lora_module_name=lora_module_name,
+                critic_lora_dim=128,
+                critic_lora_module_name=lora_module_name,
+
+            )
+
+            ppo.runsettings.resource_layout.configure(instance_count=ppo_instance_count, process_count_per_node=process_count_per_node)
+
+            ppo.outputs.output_dir.configure(
+                mode="mount",
+                path_on_datastore=output_path + "/ppo",
+                datastore=ds
+            )
+            
+
+            ppo_baseline = ppo.outputs.output_dir
+        else:
+            ppo_baseline = ppo_baseline_input
+
+        # '''
+
+
+
+        '''    for pythia rward
 
         if ppo_baseline_input is None:
             ppo = ppo_func(

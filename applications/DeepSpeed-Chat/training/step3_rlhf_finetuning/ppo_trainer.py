@@ -78,15 +78,17 @@ class DeepSpeedPPOTrainer():
         # This has been added due to a probability/nan error that happens after
         # meta-llama/Llama-2-7b-hf enabled do_sample:
         # https://huggingface.co/meta-llama/Llama-2-7b-hf/commit/6fdf2e60f86ff2481f2241aaee459f85b5b0bbb9
-        if self.actor_model.model.config.model_type == "llama":
-            kwargs = dict(do_sample=False)
-        else:
-            kwargs = dict()
+        # if self.actor_model.model.config.model_type == "llama":
+        #     kwargs = dict(do_sample=False)
+        # else:
+            # kwargs = dict()
+        
+        kwargs = dict()
 
         with torch.no_grad():
             seq = self.actor_model.module.generate(
                 prompts,
-                attention_mask=mask,
+                # attention_mask=mask,
                 max_length=max_min_length,
                 pad_token_id=self.tokenizer.pad_token_id,
                 synced_gpus=self.z3_enabled,
@@ -209,8 +211,8 @@ class DeepSpeedPPOTrainer():
         attention_mask = seq.not_equal(pad_token_id).long()
         
         with torch.no_grad():
-            reward_seq = reward_seq.to(self.reward_model.device)
             if reward_seq is not None:
+                reward_seq = reward_seq.to(self.reward_model.device)
                 torch.set_printoptions(threshold=10_000)
                 # print("reward seq")
                 # print(reward_seq)
