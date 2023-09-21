@@ -38,7 +38,6 @@ logger = logging.getLogger(__name__)
 #     return results
 
 
-
 def load_json(file):
     with open(file, "r") as fp:
         result = json.load(fp)
@@ -55,15 +54,15 @@ def parse_args():
         required=False,
     )
     parser.add_argument(
-        "--model_name_baseline",
+        "--model_name",
         type=str,
-        help="Name to baseline model",
+        help="Name of the model",
         required=False,
     )
     parser.add_argument(
-        "--model_path_baseline",
+        "--model_path",
         type=str,
-        help="Path to baseline model",
+        help="Path to model",
         required=False,
     )
 
@@ -107,8 +106,7 @@ def parse_args():
         "--num_padding_at_beginning",
         type=int,
         default=1,
-        help=
-        "OPT model has a fixed number (1) of padding tokens at the beginning of the input. We did not see this in other models but keep it as an option for now."
+        help="OPT model has a fixed number (1) of padding tokens at the beginning of the input. We did not see this in other models but keep it as an option for now."
     )
     parser.add_argument("--language",
                         type=str,
@@ -127,28 +125,31 @@ def parse_args():
     return args
 
 
-def generate(model,
-             tokenizer,
-             inputs,
-             num_beams=1,
-             num_beam_groups=1,
-             do_sample=False,
-             num_return_sequences=1,
-             max_new_tokens=100,
-             stopping_criteria=None,
-             stop_words_ids=None):
-    
-    generate_ids = model.generate(inputs.input_ids,
-                                  attention_mask=inputs.attention_mask,
-                                  num_beams=num_beams,
-                                  num_beam_groups=num_beam_groups,
-                                  do_sample=do_sample,
-                                  num_return_sequences=num_return_sequences,
-                                  max_new_tokens=max_new_tokens,
-                                  stopping_criteria=stopping_criteria)
-    
-    # print(generate_ids)
+def generate(
+    model,
+    tokenizer,
+    inputs,
+    num_beams=1,
+    num_beam_groups=1,
+    do_sample=False,
+    num_return_sequences=1,
+    max_new_tokens=100,
+    stopping_criteria=None,
+    stop_words_ids=None
+):
 
+    generate_ids = model.generate(
+        inputs.input_ids,
+        attention_mask=inputs.attention_mask,
+        num_beams=num_beams,
+        num_beam_groups=num_beam_groups,
+        do_sample=do_sample,
+        num_return_sequences=num_return_sequences,
+        max_new_tokens=max_new_tokens,
+        stopping_criteria=stopping_criteria
+    )
+
+    # print(generate_ids)
     # remove stop criteria ending
     pad_token_id = tokenizer.pad_token_id
     if stop_words_ids is not None:
@@ -157,15 +158,14 @@ def generate(model,
                 if torch.all((stop_id == generate_ids[n][-len(stop_id):])):
                     generate_ids[n][-len(stop_id):] = pad_token_id
                     break
-            
 
-    result = tokenizer.batch_decode(generate_ids,
-                                    skip_special_tokens=True,
-                                    clean_up_tokenization_spaces=False)
+    result = tokenizer.batch_decode(
+        generate_ids,
+        skip_special_tokens=True,
+        clean_up_tokenization_spaces=False
+    )
+
     return result, generate_ids
-
-
-
 
 def print_utils(gen_output):
     for i in range(len(gen_output)):
@@ -257,30 +257,30 @@ def prompt_eval(args, model_baseline, tokenizer, device, prompts):
 
         max_seq_len = 256
         # inputs = tokenizer(prompt, return_tensors="pt").to(device)
-        inputs = tokenizer(prompt,
-                            max_length=max_seq_len,
-                            truncation=True,
-                            return_tensors="pt").to(device)
-        
-        
+        inputs = tokenizer(
+            prompt,
+            max_length=max_seq_len,
+            truncation=True,
+            return_tensors="pt"
+        ).to(device)
+
         print("==========Baseline: Greedy=========")
-        r_base, baseline_generate_ids = generate(model_baseline,
-                        tokenizer,
-                        inputs,
-                        num_beams=1,
-                        num_return_sequences=args.num_return_sequences,
-                        max_new_tokens=args.max_new_tokens,
-                        stopping_criteria=stopping_criteria,
-                        stop_words_ids=stop_words_ids)
-            
+        r_base, baseline_generate_ids = generate(
+            model_baseline,
+            tokenizer,
+            inputs,
+            num_beams=1,
+            num_return_sequences=args.num_return_sequences,
+            max_new_tokens=args.max_new_tokens,
+            stopping_criteria=stopping_criteria,
+            stop_words_ids=stop_words_ids
+        )
 
-
-        cut_prompt = tokenizer.batch_decode(inputs["input_ids"],
-                                    skip_special_tokens=True,
-                                    clean_up_tokenization_spaces=False)[0]
-
-
-
+        cut_prompt = tokenizer.batch_decode(
+            inputs["input_ids"],
+            skip_special_tokens=True,
+            clean_up_tokenization_spaces=False
+        )[0]
 
         print("cut prompt", len(cut_prompt))
         print(cut_prompt)
@@ -307,8 +307,6 @@ def prompt_eval(args, model_baseline, tokenizer, device, prompts):
             "generate_ids": baseline_generate_ids.cpu().tolist()
         })
 
-
-        
         print("====================prompt end=============================")
         print()
         if True or args.calc_rouge:
@@ -326,7 +324,6 @@ def prompt_eval(args, model_baseline, tokenizer, device, prompts):
         print_rouge_stats(baseline_rouge_scores)
         print()
         print()
-
 
     return results
 
@@ -348,7 +345,6 @@ def std(items, this_mean=None):
         variance = sum([((x - this_mean) ** 2) for x in items]) / len(items)
         res = variance ** 0.5
         return res
-    
 
 def print_rouge_stats(rouge_scores):
     for key in ["precision", "recall", "fmeasure"]:
@@ -357,76 +353,6 @@ def print_rouge_stats(rouge_scores):
 
         print("ROUGE1", key, mean(rouge1_scores), std(rouge1_scores))
         print("ROUGEL", key, mean(rougeL_scores), std(rougeL_scores))
-    
-
-scoring_uri = 'https://cushman-ml-experiment-centralus-g.openai.azure.com/openai/v1/engines/cushman-ml-experiment-centralus-g/chat/completions'
-
-def api(
-        prompt, scoring_uri='',
-        response_length=120,
-        temperature=1, top_p=1,
-        frequency_penalty=0,
-        presence_penalty=0,
-        start_text='',
-        restart_text='',
-        stop_seq=[],
-        api_key=None
-):
-    headers = {
-        'Content-Type':'application/json', 
-        'Openai-Internal-ResampleUnstableTokens' : 'true', 
-        'ocp-apim-subscription-key':api_key, 
-        "Openai-Internal-AllowedSpecialTokens": "<|im_start|>,<|im_sep|>,<|im_end|>",
-        "Openai-Internal-AllowedOutputSpecialTokens": "<|im_start|>,<|im_sep|>,<|im_end|>",
-        "Openai-Internal-AllowChatCompletion": "1",
-        "Openai-Internal-HarmonyVersion": "harmony_v4.0_no_system_message_content_type",
-        'Authorization':('Bearer '+ api_key)
-    }
-    input_str = dict()
-    input_str['messages'] = [{"role": "user", "content": prompt}]
-    input_str['temperature'] = temperature
-    input_str['top_p'] = top_p
-    input_str['max_tokens'] = response_length
-
-    sample_input = json.dumps(input_str)
-    response = requests.post(scoring_uri, data=sample_input, headers=headers)
-    
-    return {
-        "prompt": prompt,
-        "response": json.loads(response.text)["choices"][0]["message"]["content"],
-        'success': True,
-    } 
-
-def isdigit(c):
-    return c in "0123456789"
-
-def analyze_response(sample):
-    substring = "The integer score out of 9 for this answer is: " 
-
-    indexes = [sample.find(substring)]
-    index = indexes[0]
-    while index != -1:
-        index = sample.find(substring, index + 1)
-
-        if index != -1:
-            indexes.append(index)
-
-    if len(indexes) > 1 or len(indexes) == 0:
-        score = -1
-    else:
-        loc = indexes[0] + len(substring) 
-        if loc < len(sample) and isdigit(sample[loc]):
-            score = int(   sample[ loc ]    )
-        else:
-            print()
-            print("error", loc, len(sample))
-            print("sample", sample)
-            print()
-                    
-            score = -1
-    
-    return score
-
 
 def main():
     args = parse_args()
@@ -437,22 +363,20 @@ def main():
 
     print("Using zero stage", args.zero_stage)
 
-    ds_config = get_eval_ds_config(offload=False,
-                                    stage=args.zero_stage)
+    ds_config = get_eval_ds_config(offload=False, stage=args.zero_stage)
 
     if args.zero_stage == 3:
         loading_ds_config = get_eval_ds_config(offload=False, stage=0)   # necessary JUST to load in model without shard issues
     else:
         loading_ds_config = ds_config
 
-    if args.model_path_baseline:
-        model_name_or_path_baseline = args.model_path_baseline
-    elif args.model_name_baseline:
-        model_name_or_path_baseline = args.model_name_baseline
+    if args.model_path:
+        model_name_or_path_baseline = args.model_path
+    elif args.model_name:
+        model_name_or_path_baseline = args.model_name
     else:
         print("no model to load")
-        0/0
-
+        sys.exit(1)
 
     if os.path.exists(model_name_or_path_baseline):
         path_files = os.listdir(model_name_or_path_baseline)
@@ -467,14 +391,15 @@ def main():
             print(model_name_or_path_baseline)
 
     # tokenizer = load_hf_tokenizer(model_name_or_path_baseline, fast_tokenizer=True)
-    tokenizer = AutoTokenizer.from_pretrained(model_name_or_path_baseline,  
-                                                fast_tokenizer=True,
-                                                unk_token="<unk>",
-                                                bos_token="<s>",
-                                                eos_token="</s>",
-                                                truncation_side="left",
-                                                padding_side="right" # necessary for llama
-                                                )
+    tokenizer = AutoTokenizer.from_pretrained(
+        model_name_or_path_baseline,
+        fast_tokenizer=True,
+        unk_token="<unk>",
+        bos_token="<s>",
+        eos_token="</s>",
+        truncation_side="left",
+        padding_side="right"  # necessary for llama
+    )
     tokenizer.pad_token = tokenizer.eos_token
 
     model_baseline = create_hf_model(
@@ -502,8 +427,8 @@ def main():
                 prompts.append(prompt)
                 seen[prompt] = True
             # if len(prompts) == 250: break
-            if len(prompts) == max_samples: break
-
+            if len(prompts) == max_samples:
+                break
 
     # One observation: if the prompt ends with a space " ", there is a high chance that
     # the original model (without finetuning) will stuck and produce no response.
@@ -543,10 +468,9 @@ def main():
             "Human: 鳥が冬に南に移動するのはなぜですか? Assistant:"
         ]
 
-
     with torch.no_grad():
         results = prompt_eval(args, model_baseline, tokenizer, device, prompts)
-    
+
     with open(os.path.join(args.output_dir, "outputs.jsonl"), 'w') as fp:
         for line in results:
             fp.write(json.dumps(line) + "\n")

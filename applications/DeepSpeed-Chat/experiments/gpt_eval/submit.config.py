@@ -42,7 +42,7 @@ def main():
     # Load components
     ################################################
     components_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'components')
-    model_gen_func = Component.from_yaml(ws, yaml_file=os.path.join(components_dir, 'model_generation.yaml'))
+    model_gen_func = Component.from_yaml(ws, yaml_file=os.path.join(components_dir, 'generate_completions.yaml'))
     compare_gen_func = Component.from_yaml(ws, yaml_file=os.path.join(components_dir, 'compare_generations.yaml'))
 
     sft_model_outputs = None

@@ -297,7 +297,7 @@ def main():
 
         results.append({
             "prompt": prompt,
-            "baseline":baseline_cleaned,
+            "baseline": baseline_cleaned,
             "finetuned": finetune_cleaned,
         })
 

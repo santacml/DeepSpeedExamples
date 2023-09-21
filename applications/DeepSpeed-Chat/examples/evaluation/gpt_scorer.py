@@ -118,27 +118,30 @@ if __name__ == "__main__":
     system_msg_template = templates['SYSTEM_MSG']
     user_msg_template = templates['USER_MSG']
 
-    data_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), os.pardir, os.pardir, os.pardir, os.pardir, os.pardir, 'data')
-    generations_path = os.path.join(data_dir, 'logs-2023-09-19-231204', 'eval-sft-rl', 'outputs.jsonl')
+    logs_dir = 'logs-2023-09-20-133828'
+    data_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), os.pardir, os.pardir, os.pardir, os.pardir, os.pardir, 'data', logs_dir)
+    generations_path = os.path.join(data_dir, 'eval-sft-rl', 'outputs.jsonl')
     generations = load_generations(generations_path)
 
-    output_dir = os.path.join(data_dir, 'logs-2023-09-19-231204')
+    output_dir = data_dir
     os.makedirs(output_dir, exist_ok=True)
-    gpt4_outputs = []
-    for generation in generations:
-        user_msg = user_msg_template.copy()
-        user_msg['content'] = user_msg['content'].replace('{prompt}', generation['prompt']).replace('{completion}', generation['baseline'])
 
-        samples = []
-        for _ in range(3):
-            response = engine.get_response(user_msg, system_msg_template)
-            samples.append(response)
+    for model in ['finetuned']:
+        gpt4_outputs = []
+        for generation in generations:
+            user_msg = user_msg_template.copy()
+            user_msg['content'] = user_msg['content'].replace('{prompt}', generation['prompt']).replace('{completion}', generation[model])
 
-        gpt4_outputs.append({
-            'metadata': generation,
-            'samples': samples,
-        })
+            samples = []
+            for _ in range(3):
+                response = engine.get_response(user_msg, system_msg_template)
+                samples.append(response)
 
-    with open(os.path.join(output_dir, "gpt4_outputs.jsonl"), 'w') as fp:
-        for line in gpt4_outputs:
-            fp.write(json.dumps(line) + "\n")
+            gpt4_outputs.append({
+                'metadata': generation,
+                'samples': samples,
+            })
+
+            with open(os.path.join(output_dir, f"gpt4_outputs_{model}.jsonl"), 'a') as fp:
+                for line in gpt4_outputs:
+                    fp.write(json.dumps(line) + "\n")

@@ -69,8 +69,8 @@ launcher:
   additional_arguments: >    
     pip install -e . && python ./examples/evaluation/model_generation.py
       [--data_path {inputs.data_path}]
-      [--model_name_baseline {inputs.model_name} ]
-      [--model_path_baseline {inputs.model_path} ]
+      [--model_name {inputs.model_name} ]
+      [--model_path {inputs.model_path} ]
       --num_padding_at_beginning {inputs.num_padding_at_beginning}
       [--max_new_tokens {inputs.max_new_tokens}]
       --output_dir {outputs.output_dir}
