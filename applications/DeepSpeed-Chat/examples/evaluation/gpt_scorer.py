@@ -81,7 +81,7 @@ class OpenAIEngine(ChatEngine):
         self.generation_type = generation_type
         super().__init__(model, temperature, max_tokens, top_p, frequency_penalty, presence_penalty, stop, sleep)
 
-    @retry(tries=3, delay=1, backoff=2)
+    @retry(tries=3, delay=18, backoff=18, jitter=18)
     def get_response(self, user_msg, system_msg=None):
         messages = []
         if system_msg:
@@ -126,7 +126,7 @@ if __name__ == "__main__":
     output_dir = data_dir
     os.makedirs(output_dir, exist_ok=True)
 
-    for model in ['finetuned']:
+    for model in ['baseline', 'finetuned']:
         gpt4_outputs = []
         for generation in generations:
             user_msg = user_msg_template.copy()

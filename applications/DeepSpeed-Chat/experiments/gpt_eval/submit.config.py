@@ -11,7 +11,7 @@ from azure.ml.component import Component, dsl
 def main():
     timestamp = datetime.datetime.fromtimestamp(time.time()).strftime('%Y-%m-%d-%H%M%S')
     output_path = os.path.join('oss_rlhf', f"logs-{timestamp}")
-    job_name = 'rlhf-stack-exchange-llama2'
+    job_name = 'gpt-eval-stackllama'
     compute_name = 'A100-80G-PCIE-westus3'
     num_nodes = 1
     processes_per_node = 1
@@ -34,8 +34,8 @@ def main():
     ################################################
     # Load base model(s)
     ################################################
-    sft_model_path = Dataset.File.from_files(path=[(datastore, "misantac_oss_rlhf/SAVED_FINAL_RUNS/logs-2023-08-02-171401/sft")], validate=True).as_mount()
-    rm_model_path = Dataset.File.from_files(path=[(datastore, "misantac_oss_rlhf/SAVED_FINAL_RUNS/logs-2023-07-11-104249/rm")], validate=True).as_mount()
+    sft_model_path = Dataset.File.from_files(path=[(datastore, "hitshar_rlhf/logs-2023-09-19-132943/stackxLlama2/sft/")], validate=True).as_mount()
+    rm_model_path = Dataset.File.from_files(path=[(datastore, "hitshar_rlhf/logs-2023-09-19-163558/stackxLlama/rm/2/")], validate=True).as_mount()
     rl_model_path = Dataset.File.from_files(path=[(datastore, "misantac_oss_rlhf/SAVED_FINAL_RUNS/logs-2023-08-02-171401/ppo/actor/best")], validate=True).as_mount()
 
     ################################################

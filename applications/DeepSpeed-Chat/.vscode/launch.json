@@ -43,7 +43,22 @@
         "OPENAI_API_BASE": "<OPENAI_API_BASE>",
         "OPENAI_API_VERSION": "<OPENAI_API_VERSION>",
         "OPENAI_API_KEY": "<OPENAI_API_KEY>"
-    }
+      }
+    },
+    {
+      "name": "results-parser",
+      "type": "python",
+      "request": "launch",
+      "cwd": "${workspaceFolder}/examples/evaluation",
+      "program": "parse_results.py",
+      "args": [
+        "--data_dir", "${workspaceFolder}\\..\\..\\..\\data\\logs-2023-09-20-133828",
+        "--baseline_evaluations", "gpt4_outputs_baseline.jsonl",
+        "--finetuned_evaluations","gpt4_outputs_finetuned.jsonl",
+        "--output_dir", "${workspaceFolder}"
+      ],
+      "justMyCode": false,
+      "console": "integratedTerminal"
     },
   ]
 }
