@@ -174,11 +174,6 @@ def main(args):
     print("Mean baseline score", mean(baseline_scores), "std", std(baseline_scores))
     print("Mean finetune score", mean(finetune_scores), "std", std(finetune_scores))
 
-    os.makedirs(args.output_dir, exist_ok=True)
-    with open(os.path.join(args.output_dir, 'gpt4_scores.jsonl'), 'w') as fp:
-        for line in all_results:
-            fp.write(json.dumps(line) + "\n")
-
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
