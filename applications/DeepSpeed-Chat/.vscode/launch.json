@@ -26,10 +26,24 @@
       "name": "aml-launch-gen-eval",
       "type": "python",
       "request": "launch",
-      "cwd": "${workspaceFolder}/experiments/gpt_eval/",
+      "cwd": "${workspaceFolder}/experiments/gpt_eval",
       "program": "submit.config.py",
       "justMyCode": false,
       "console": "integratedTerminal"
+    },
+    {
+      "name": "gpt-scorer",
+      "type": "python",
+      "request": "launch",
+      "cwd": "${workspaceFolder}/examples/evaluation",
+      "program": "gpt_scorer.py",
+      "justMyCode": false,
+      "console": "integratedTerminal",
+      "env": {
+        "OPENAI_API_BASE": "<OPENAI_API_BASE>",
+        "OPENAI_API_VERSION": "<OPENAI_API_VERSION>",
+        "OPENAI_API_KEY": "<OPENAI_API_KEY>"
+    }
     },
   ]
 }
