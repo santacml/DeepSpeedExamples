@@ -554,8 +554,8 @@ def main():
         torch.cuda.set_device(args.local_rank)
         device = torch.device("cuda", args.local_rank)
         # Initializes the distributed backend which will take care of sychronizing nodes/GPUs
-        deepspeed.init_distributed()
 
+    deepspeed.init_distributed()
     args.global_rank = torch.distributed.get_rank()
 
     azureml_logger = AzureMLLogger(args)
