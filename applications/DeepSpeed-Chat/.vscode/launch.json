@@ -39,6 +39,10 @@
       "program": "gpt_scorer.py",
       "justMyCode": false,
       "console": "integratedTerminal",
+      "args": [
+        "--data_dir", "${workspaceFolder}\\..\\..\\..\\data\\logs-2023-09-20-133828",
+        "--output_dir", "${workspaceFolder}\\..\\..\\..\\data\\logs-2023-09-20-133828"
+      ],
       "env": {
         "OPENAI_API_BASE": "<OPENAI_API_BASE>",
         "OPENAI_API_VERSION": "<OPENAI_API_VERSION>",

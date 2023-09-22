@@ -1,3 +1,4 @@
+import argparse
 import json
 import os
 
@@ -81,7 +82,7 @@ class OpenAIEngine(ChatEngine):
         self.generation_type = generation_type
         super().__init__(model, temperature, max_tokens, top_p, frequency_penalty, presence_penalty, stop, sleep)
 
-    @retry(tries=3, delay=18, backoff=18, jitter=18)
+    @retry(tries=3, delay=1, backoff=30)
     def get_response(self, user_msg, system_msg=None):
         messages = []
         if system_msg:
@@ -102,8 +103,7 @@ class OpenAIEngine(ChatEngine):
         return response["choices"][0]["message"]["content"]
 
 
-if __name__ == "__main__":
-
+def main(args):
     engine = OpenAIEngine(
         api_type="azure",
         api_base=os.getenv("OPENAI_API_BASE"),
@@ -118,14 +118,10 @@ if __name__ == "__main__":
     system_msg_template = templates['SYSTEM_MSG']
     user_msg_template = templates['USER_MSG']
 
-    logs_dir = 'logs-2023-09-20-133828'
-    data_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), os.pardir, os.pardir, os.pardir, os.pardir, os.pardir, 'data', logs_dir)
-    generations_path = os.path.join(data_dir, 'eval-sft-rl', 'outputs.jsonl')
+    generations_path = os.path.join(args.data_dir, 'eval-sft-rl', 'outputs.jsonl')
     generations = load_generations(generations_path)
 
-    output_dir = data_dir
-    os.makedirs(output_dir, exist_ok=True)
-
+    os.makedirs(args.output_dir, exist_ok=True)
     for model in ['baseline', 'finetuned']:
         gpt4_outputs = []
         for generation in generations:
@@ -142,6 +138,14 @@ if __name__ == "__main__":
                 'samples': samples,
             })
 
-            with open(os.path.join(output_dir, f"gpt4_outputs_{model}.jsonl"), 'a') as fp:
+            with open(os.path.join(args.output_dir, f"gpt4_outputs_{model}.jsonl"), 'a') as fp:
                 for line in gpt4_outputs:
                     fp.write(json.dumps(line) + "\n")
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--data_dir", help="")
+    parser.add_argument("--output_dir", help="")
+    args = parser.parse_args()
+    main(args)
