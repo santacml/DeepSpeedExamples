@@ -51,6 +51,11 @@ inputs:
     optional: true
     default: 256
     type: int
+  max_seq_length:
+    description: max_seq_length
+    optional: true
+    default: 1024
+    type: int
 
 is_deterministic: true
 meta: 
@@ -73,6 +78,7 @@ launcher:
       [--model_path {inputs.model_path} ]
       --num_padding_at_beginning {inputs.num_padding_at_beginning}
       [--max_new_tokens {inputs.max_new_tokens}]
+      [--max_seq_length {inputs.max_seq_length}]
       --output_dir {outputs.output_dir}
 
 

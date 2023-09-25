@@ -100,7 +100,13 @@ def parse_args():
         "--max_new_tokens",
         type=int,
         default=100,
-        help='Specify num of return sequences',
+        help='Specify max new tokens for the generation',
+    )
+    parser.add_argument(
+        "--max_seq_length",
+        type=int,
+        default=1024,
+        help='Specify the max seq length for the context',
     )
     parser.add_argument(
         "--num_padding_at_beginning",
@@ -108,17 +114,23 @@ def parse_args():
         default=1,
         help="OPT model has a fixed number (1) of padding tokens at the beginning of the input. We did not see this in other models but keep it as an option for now."
     )
-    parser.add_argument("--language",
-                        type=str,
-                        default="English",
-                        choices=["English", "Chinese", "Japanese"])
-    parser.add_argument("--output_dir",
-                        type=str,
-                        default=None,
-                        help="Where to store the outputs.")
-    parser.add_argument('--calc_rouge',
-                        action='store_true',
-                        help='Calculate rouge scores.')
+    parser.add_argument(
+        "--language",
+        type=str,
+        default="English",
+        choices=["English", "Chinese", "Japanese"]
+    )
+    parser.add_argument(
+        "--output_dir",
+        type=str,
+        default=None,
+        help="Where to store the outputs."
+    )
+    parser.add_argument(
+        '--calc_rouge',
+        action='store_true',
+        help='Calculate rouge scores.'
+    )
 
     args = parser.parse_args()
 
@@ -176,7 +188,7 @@ def print_utils(gen_output):
 
 class StoppingCriteriaSub(StoppingCriteria):
 
-    def __init__(self, stops = [], encounters=1):
+    def __init__(self, stops=[], encounters=1):
         super().__init__()
         self.stops = [stop for stop in stops]
 
@@ -209,7 +221,7 @@ def cleanup_completion(completion):
             new_completion = new_completion[:-5]
             completion = " ".join(new_completion)
             break
-    
+
     return completion
 
 def get_prompt(ex_completion):
@@ -219,7 +231,7 @@ def get_prompt(ex_completion):
         if ending_phrase in ex_completion:
             prompt = ex_completion[:ex_completion.find(ending_phrase) + len(ending_phrase)]
             one_found = True
-    
+
     if not one_found:
         print("PROMPT NOT FOUND")
     return prompt
@@ -255,11 +267,10 @@ def prompt_eval(args, model_baseline, tokenizer, device, prompts):
         print("==========PROMPT=========")
         print(prompt)
 
-        max_seq_len = 256
         # inputs = tokenizer(prompt, return_tensors="pt").to(device)
         inputs = tokenizer(
             prompt,
-            max_length=max_seq_len,
+            max_length=args.max_seq_length,
             truncation=True,
             return_tensors="pt"
         ).to(device)
@@ -285,7 +296,7 @@ def prompt_eval(args, model_baseline, tokenizer, device, prompts):
         print("cut prompt", len(cut_prompt))
         print(cut_prompt)
         print()
-        
+
         cleaned_up_base = cleanup_completion(r_base[0][len(cut_prompt):])
         baseline_lens.append(len(cleaned_up_base))
 
@@ -412,7 +423,7 @@ def main():
     model_baseline.to(device)
     model_baseline.eval()
 
-    max_samples = 500
+    max_samples = 200
     # max_samples = 5   # temp debug
 
     if args.data_path is not None:

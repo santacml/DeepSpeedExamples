@@ -36,7 +36,7 @@ def main():
     ################################################
     sft_model_path = Dataset.File.from_files(path=[(datastore, "hitshar_rlhf/logs-2023-09-19-132943/stackxLlama2/sft/")], validate=True).as_mount()
     rm_model_path = Dataset.File.from_files(path=[(datastore, "hitshar_rlhf/logs-2023-09-19-163558/stackxLlama/rm/2/")], validate=True).as_mount()
-    rl_model_path = Dataset.File.from_files(path=[(datastore, "misantac_oss_rlhf/SAVED_FINAL_RUNS/logs-2023-08-02-171401/ppo/actor/best")], validate=True).as_mount()
+    rl_model_path = Dataset.File.from_files(path=[(datastore, "hitshar_rlhf/logs-2023-09-23-071510/stackxLlama2/ppo/actor/4999")], validate=True).as_mount()
 
     ################################################
     # Load components
@@ -60,7 +60,7 @@ def main():
             eval_sft = model_gen_func(
                 model_path=sft_model_path,
                 num_padding_at_beginning=0,
-                max_new_tokens=512,
+                max_new_tokens=128,
                 data_path=data_eval,
             )
             eval_sft.runsettings.resource_layout.configure(instance_count=num_nodes, process_count_per_node=processes_per_node)
@@ -77,7 +77,7 @@ def main():
             eval_rl = model_gen_func(
                 model_path=rl_model_path,
                 num_padding_at_beginning=0,
-                max_new_tokens=512,
+                max_new_tokens=128,
                 data_path=data_eval,
             )
             eval_rl.runsettings.resource_layout.configure(instance_count=num_nodes, process_count_per_node=processes_per_node)
