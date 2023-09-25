@@ -282,7 +282,6 @@ def main():
         else:
             base_rouge_wins += 1
 
-            
         print("REWARD SCORES")
         print("baseline_reward_score", baseline_reward_score)
         print("finetuned_reward_score", finetuned_reward_score)
@@ -308,15 +307,15 @@ def main():
     print()
     print("REWARD MODEL WINS")
 
-    print("base_reward_wins", base_reward_wins, base_reward_wins/len(prompts))
-    print("finetune_reward_wins", finetune_reward_wins, finetune_reward_wins/len(prompts))
-    print("reward_ties", reward_ties, reward_ties/len(prompts))
+    print("base_reward_wins", base_reward_wins, base_reward_wins / len(prompts))
+    print("finetune_reward_wins", finetune_reward_wins, finetune_reward_wins / len(prompts))
+    print("reward_ties", reward_ties, reward_ties / len(prompts))
     print()
     print("baseline lens", mean(baseline_lens), "std", std(baseline_lens))
     print("finetune lens", mean(finetune_lens), "std", std(finetune_lens))
     print()
-    print("base_rouge_wins", base_rouge_wins, base_rouge_wins/len(prompts))
-    print("finetune_rouge_wins", finetune_rouge_wins, finetune_rouge_wins/len(prompts))
+    print("base_rouge_wins", base_rouge_wins, base_rouge_wins / len(prompts))
+    print("finetune_rouge_wins", finetune_rouge_wins, finetune_rouge_wins / len(prompts))
 
     print()
     print("ROUGE SCORES")
