@@ -50,7 +50,7 @@ inputs:
 is_deterministic: true
 meta: 
   requireGpu: true
-name: ds_rlhf.eval
+name: ds_rlhf.compare_generations
 outputs: 
   output_dir: 
     description: Output directory

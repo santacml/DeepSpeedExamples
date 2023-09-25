@@ -60,7 +60,7 @@ inputs:
 is_deterministic: true
 meta: 
   requireGpu: true
-name: ds_rlhf.eval
+name: ds_rlhf.gen_completions
 outputs: 
   output_dir: 
     description: Output directory

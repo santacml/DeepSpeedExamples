@@ -36,7 +36,7 @@ def main():
     ################################################
     sft_model_path = Dataset.File.from_files(path=[(datastore, "hitshar_rlhf/logs-2023-09-19-132943/stackxLlama2/sft/")], validate=True).as_mount()
     rm_model_path = Dataset.File.from_files(path=[(datastore, "hitshar_rlhf/logs-2023-09-19-163558/stackxLlama/rm/2/")], validate=True).as_mount()
-    rl_model_path = Dataset.File.from_files(path=[(datastore, "hitshar_rlhf/logs-2023-09-23-071510/stackxLlama2/ppo/actor/4999")], validate=True).as_mount()
+    rl_model_path = Dataset.File.from_files(path=[(datastore, "hitshar_rlhf/logs-2023-09-23-071833/stackxLlama2/ppo/actor/4999")], validate=True).as_mount()
 
     ################################################
     # Load components
@@ -44,9 +44,11 @@ def main():
     components_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'components')
     model_gen_func = Component.from_yaml(ws, yaml_file=os.path.join(components_dir, 'generate_completions.yaml'))
     compare_gen_func = Component.from_yaml(ws, yaml_file=os.path.join(components_dir, 'compare_generations.yaml'))
+    gpt_scorer_func = Component.from_yaml(ws, yaml_file=os.path.join(components_dir, 'gpt_scorer.yaml'))
 
-    sft_model_outputs = None
-    rl_model_outputs = None
+    sft_model_outputs = Dataset.File.from_files(path=[(datastore, "oss_rlhf/logs-2023-09-25-101314/sft-gen/")], validate=True).as_mount()
+    rl_model_outputs = Dataset.File.from_files(path=[(datastore, "oss_rlhf/logs-2023-09-25-101314/rl-gen/")], validate=True).as_mount()
+    comparison_outputs = Dataset.File.from_files(path=[(datastore, "oss_rlhf/logs-2023-09-25-101314/eval-sft-rl/")], validate=True).as_mount()
 
     ################################################
     # Define pipeline (configure and connect components)
@@ -57,51 +59,70 @@ def main():
     )
     def build_pipeline():
         if sft_model_outputs is None:
-            eval_sft = model_gen_func(
+            gen_sft = model_gen_func(
                 model_path=sft_model_path,
                 num_padding_at_beginning=0,
                 max_new_tokens=128,
                 data_path=data_eval,
             )
-            eval_sft.runsettings.resource_layout.configure(instance_count=num_nodes, process_count_per_node=processes_per_node)
-            eval_sft.outputs.output_dir.configure(
+            gen_sft.runsettings.resource_layout.configure(instance_count=num_nodes, process_count_per_node=processes_per_node)
+            gen_sft.outputs.output_dir.configure(
                 mode="mount",
                 path_on_datastore=os.path.join(output_path, "sft-gen"),
                 datastore=datastore
             )
-            baseline_model_outputs = eval_sft.outputs.output_dir
+            baseline_model_outputs = gen_sft.outputs.output_dir
         else:
             baseline_model_outputs = sft_model_outputs
 
         if rl_model_outputs is None:
-            eval_rl = model_gen_func(
+            gen_rl = model_gen_func(
                 model_path=rl_model_path,
                 num_padding_at_beginning=0,
                 max_new_tokens=128,
                 data_path=data_eval,
             )
-            eval_rl.runsettings.resource_layout.configure(instance_count=num_nodes, process_count_per_node=processes_per_node)
-            eval_rl.outputs.output_dir.configure(
+            gen_rl.runsettings.resource_layout.configure(instance_count=num_nodes, process_count_per_node=processes_per_node)
+            gen_rl.outputs.output_dir.configure(
                 mode="mount",
                 path_on_datastore=os.path.join(output_path, "rl-gen"),
                 datastore=datastore
             )
-            finetune_model_outputs = eval_rl.outputs.output_dir
+            finetune_model_outputs = gen_rl.outputs.output_dir
         else:
             finetune_model_outputs = rl_model_outputs
 
-        eval_sft_vs_rl = compare_gen_func(
-            baseline_model_outputs=baseline_model_outputs,
-            finetune_model_outputs=finetune_model_outputs,
-            num_padding_at_beginning=0,
-            reward_model_path=rm_model_path,
+        if comparison_outputs is None:
+            merge_sft_vs_rl = compare_gen_func(
+                baseline_model_outputs=baseline_model_outputs,
+                finetune_model_outputs=finetune_model_outputs,
+                num_padding_at_beginning=0,
+                reward_model_path=rm_model_path,
+            )
+            merge_sft_vs_rl.runsettings.resource_layout.configure(instance_count=num_nodes, process_count_per_node=processes_per_node)
+            merge_sft_vs_rl.outputs.output_dir.configure(
+                mode="mount",
+                path_on_datastore=os.path.join(output_path, "eval-sft-rl"),
+                datastore=datastore
+            )
+            compare_outputs = merge_sft_vs_rl.outputs.output_dir
+        else:
+            compare_outputs = comparison_outputs
+
+        gpt_scorer = gpt_scorer_func(
+            data_dir=compare_outputs,
         )
-        eval_sft_vs_rl.runsettings.resource_layout.configure(instance_count=num_nodes, process_count_per_node=processes_per_node)
-        eval_sft_vs_rl.outputs.output_dir.configure(
+        gpt_scorer.compute = "d15"
+        gpt_scorer.outputs.output_dir.configure(
             mode="mount",
             path_on_datastore=os.path.join(output_path, "eval-sft-rl"),
             datastore=datastore
         )
+        gpt_scorer.runsettings.environment_variables = {
+            'OPENAI_API_BASE': os.getenv("OPENAI_API_BASE"),
+            'OPENAI_API_VERSION': os.getenv("OPENAI_API_VERSION"),
+            'OPENAI_API_KEY': os.getenv("OPENAI_API_KEY")
+        }
 
     tags = {
         "dataset": "stack-exchange",

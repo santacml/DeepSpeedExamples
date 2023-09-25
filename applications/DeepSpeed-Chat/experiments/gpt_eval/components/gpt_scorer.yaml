@@ -1,0 +1,26 @@
+$schema: https://azuremlschemas.azureedge.net/latest/commandComponent.schema.json
+name: ds_rlhf.gpt_scorer
+description: "GPT Scorer"
+display_name: GPT Scorer
+environment: 
+  image: mcr.microsoft.com/azureml/openmpi4.1.0-ubuntu20.04
+
+inputs: 
+  data_dir: 
+    description: data_dir
+    optional: false
+    type: path
+
+outputs: 
+  output_dir: 
+    description: Output directory
+    type: path
+
+code: ../../../
+
+command: pip install -r ./examples/evaluation/requirements.txt && python ./examples/evaluation/gpt_scorer.py --data_dir ${{inputs.data_dir}} --output_dir ${{outputs.output_dir}}
+
+tags: 
+  author: aims-research
+type: command
+version: 0.1.0

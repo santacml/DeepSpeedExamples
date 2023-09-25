@@ -118,13 +118,13 @@ def main(args):
     system_msg_template = templates['SYSTEM_MSG']
     user_msg_template = templates['USER_MSG']
 
-    generations_path = os.path.join(args.data_dir, 'eval-sft-rl', 'outputs.jsonl')
+    generations_path = os.path.join(args.data_dir, 'outputs.jsonl')
     generations = load_generations(generations_path)
 
     os.makedirs(args.output_dir, exist_ok=True)
     for model in ['baseline', 'finetuned']:
         gpt4_outputs = []
-        for generation in generations:
+        for i, generation in enumerate(generations):
             user_msg = user_msg_template.copy()
             user_msg['content'] = user_msg['content'].replace('{prompt}', generation['prompt']).replace('{completion}', generation[model])
 
@@ -138,9 +138,12 @@ def main(args):
                 'samples': samples,
             })
 
-            with open(os.path.join(args.output_dir, f"gpt4_outputs_{model}.jsonl"), 'a') as fp:
-                for line in gpt4_outputs:
-                    fp.write(json.dumps(line) + "\n")
+            if i % 10 == 0:
+                with open(os.path.join(args.output_dir, f"gpt4_outputs_{model}.jsonl"), 'a') as fp:
+                    for line in gpt4_outputs:
+                        fp.write(json.dumps(line) + "\n")
+                print('saved', i, 'outputs')
+                gpt4_outputs = []
 
 
 if __name__ == "__main__":
