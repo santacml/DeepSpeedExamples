@@ -203,7 +203,7 @@ def main():
     )
     tokenizer.pad_token = tokenizer.eos_token
 
-    reward_model=None
+    reward_model = None
     if args.reward_model_path is not None and os.path.isdir(args.reward_model_path):
         print("loading reward model")
         reward_model = create_critic_model(

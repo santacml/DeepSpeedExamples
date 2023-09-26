@@ -1,9 +1,11 @@
 import argparse
 import json
+import logging
 import os
 
 import openai
 from retry import retry
+
 
 def load_generations(file):
     generations = []
@@ -82,7 +84,7 @@ class OpenAIEngine(ChatEngine):
         self.generation_type = generation_type
         super().__init__(model, temperature, max_tokens, top_p, frequency_penalty, presence_penalty, stop, sleep)
 
-    @retry(tries=3, delay=1, backoff=30)
+    @retry(tries=10, delay=30, backoff=2, max_delay=90, logger=logging.getLogger(__name__))
     def get_response(self, user_msg, system_msg=None):
         messages = []
         if system_msg:
@@ -138,12 +140,17 @@ def main(args):
                 'samples': samples,
             })
 
-            if i % 10 == 0:
-                with open(os.path.join(args.output_dir, f"gpt4_outputs_{model}.jsonl"), 'a') as fp:
-                    for line in gpt4_outputs:
-                        fp.write(json.dumps(line) + "\n")
-                print('saved', i, 'outputs')
-                gpt4_outputs = []
+        if i % 10 == 9:
+            with open(os.path.join(args.output_dir, f"gpt4_outputs_{model}.jsonl"), 'a') as fp:
+                for line in gpt4_outputs:
+                    fp.write(json.dumps(line) + "\n")
+            print('saved', i, 'outputs')
+            gpt4_outputs = []
+
+    if gpt4_outputs:
+        with open(os.path.join(args.output_dir, f"gpt4_outputs_{model}.jsonl"), 'a') as fp:
+            for line in gpt4_outputs:
+                fp.write(json.dumps(line) + "\n")
 
 
 if __name__ == "__main__":
