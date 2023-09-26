@@ -41,6 +41,9 @@ def main():
     apa1_model_path = Dataset.File.from_files(path=[(datastore, "hitshar_rlhf/logs-2023-09-23-071833/stackxLlama2/ppo/actor/4999")], validate=True).as_mount()
     ppo2_model_path = Dataset.File.from_files(path=[(datastore, "hitshar_rlhf/logs-2023-09-24-163340/stackxLlama2/ppo/actor/3999")], validate=True).as_mount()
     apa2_model_path = Dataset.File.from_files(path=[(datastore, "hitshar_rlhf/logs-2023-09-23-071833/stackxLlama2/ppo/actor/2999")], validate=True).as_mount()
+    ppo3_model_path = Dataset.File.from_files(path=[(datastore, "hitshar_rlhf/logs-2023-09-25-085729/stackxLlama2/ppo/actor/2999")], validate=True).as_mount()
+    apa3_model_path = Dataset.File.from_files(path=[(datastore, "hitshar_rlhf/logs-2023-09-24-211721/stackxLlama2/ppo/actor/1999")], validate=True).as_mount()
+    ppo4_model_path = Dataset.File.from_files(path=[(datastore, "hitshar_rlhf/logs-2023-09-25-124134/stackxLlama2/ppo/actor/1999")], validate=True).as_mount()
 
     ################################################
     # Load components
@@ -61,8 +64,8 @@ def main():
     # merged_generations = Dataset.File.from_files(path=[(datastore, "oss_rlhf/logs-2023-09-25-101314/eval-sft-ppo/")], validate=True).as_mount()
     # scoring_outputs = Dataset.File.from_files(path=[(datastore, "oss_rlhf/logs-2023-09-25-101314/eval-sft-ppo/")], validate=True).as_mount()
 
-    first_model_path = ppo2_model_path
-    second_model_path = apa2_model_path
+    first_model_path = ppo4_model_path
+    second_model_path = apa3_model_path
 
     first_model_name = "ppo"
     second_model_name = "apa"

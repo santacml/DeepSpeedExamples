@@ -103,7 +103,7 @@ def main(args):
     for result in finetuned_evaluations:
         if "samples" in result.keys():
             samples = result["samples"]
-        elif "choices" in result.keys() :
+        elif "choices" in result.keys():
             samples = [choice["text"] for choice in result["choices"]]
         else:
             print("no valid keys")
