@@ -29,8 +29,7 @@ def main():
     ################################################
     # Load dataset(s)
     ################################################
-    all_datasets_path = "misantac_oss_rlhf/stackllama_md_processed/stackllama_md_filtered_processed_150000/"
-    data_eval = Dataset.File.from_files(path=[(datastore, all_datasets_path)], validate=True).as_mount()
+    data_eval = Dataset.File.from_files(path=[(datastore, "rlhf_datasets/stackXtest/1K")], validate=True).as_mount()
 
     ################################################
     # Load base model(s)
@@ -44,7 +43,7 @@ def main():
     ppo3_model_path = Dataset.File.from_files(path=[(datastore, "hitshar_rlhf/logs-2023-09-25-085729/stackxLlama2/ppo/actor/2999")], validate=True).as_mount()
     apa3_model_path = Dataset.File.from_files(path=[(datastore, "hitshar_rlhf/logs-2023-09-24-211721/stackxLlama2/ppo/actor/1999")], validate=True).as_mount()
     ppo4_model_path = Dataset.File.from_files(path=[(datastore, "hitshar_rlhf/logs-2023-09-25-124134/stackxLlama2/ppo/actor/1999")], validate=True).as_mount()
-
+    apa4_model_path = Dataset.File.from_files(path=[(datastore, "hitshar_rlhf/logs-2023-09-25-184812/stackxLlama2/ppo/actor/4999")], validate=True).as_mount()
     ################################################
     # Load components
     ################################################
@@ -65,7 +64,7 @@ def main():
     # scoring_outputs = Dataset.File.from_files(path=[(datastore, "oss_rlhf/logs-2023-09-25-101314/eval-sft-ppo/")], validate=True).as_mount()
 
     first_model_path = ppo4_model_path
-    second_model_path = apa3_model_path
+    second_model_path = apa4_model_path
 
     first_model_name = "ppo"
     second_model_name = "apa"
@@ -133,7 +132,7 @@ def main():
             gpt_scorer = gpt_scorer_func(
                 data_dir=compare_outputs,
             )
-            gpt_scorer.compute = cpu_compute_name
+            gpt_scorer.runsettings.configure(target=cpu_compute_name)
             gpt_scorer.outputs.output_dir.configure(
                 mode="mount",
                 path_on_datastore=os.path.join(output_path, f"eval-{first_model_name}-{second_model_name}"),
@@ -153,7 +152,7 @@ def main():
             baseline_evaluations="gpt4_outputs_baseline.jsonl",
             finetuned_evaluations="gpt4_outputs_finetuned.jsonl",
         )
-        parse_results.compute = cpu_compute_name
+        parse_results.runsettings.configure(target=cpu_compute_name)
         parse_results.outputs.output_dir.configure(
             mode="mount",
             path_on_datastore=os.path.join(output_path, f"eval-{first_model_name}-{second_model_name}"),
