@@ -29,7 +29,12 @@
       "cwd": "${workspaceFolder}/experiments/gpt_eval",
       "program": "submit.config.py",
       "justMyCode": false,
-      "console": "integratedTerminal"
+      "console": "integratedTerminal",
+      "env": {
+        "OPENAI_API_BASE": "<OPENAI_API_BASE>",
+        "OPENAI_API_VERSION": "<OPENAI_API_VERSION>",
+        "OPENAI_API_KEY": "<OPENAI_API_KEY>"
+      }
     },
     {
       "name": "gpt-scorer",
@@ -40,8 +45,8 @@
       "justMyCode": false,
       "console": "integratedTerminal",
       "args": [
-        "--data_dir", "${workspaceFolder}\\..\\..\\..\\data\\logs-2023-09-20-133828",
-        "--output_dir", "${workspaceFolder}\\..\\..\\..\\data\\logs-2023-09-20-133828"
+        "--data_dir", "${workspaceFolder}\\..\\..\\..\\data\\iclr\\logs-2023-09-25-101314\\eval-sft-ppo",
+        "--output_dir", "${workspaceFolder}\\..\\..\\..\\data\\iclr\\logs-2023-09-25-101314\\eval-sft-ppo"
       ],
       "env": {
         "OPENAI_API_BASE": "<OPENAI_API_BASE>",
@@ -56,10 +61,10 @@
       "cwd": "${workspaceFolder}/examples/evaluation",
       "program": "parse_results.py",
       "args": [
-        "--data_dir", "${workspaceFolder}\\..\\..\\..\\data\\logs-2023-09-20-133828",
+        "--data_dir", "${workspaceFolder}\\..\\..\\..\\data\\iclr\\logs-2023-09-25-101314\\eval-ppo-apa",
         "--baseline_evaluations", "gpt4_outputs_baseline.jsonl",
         "--finetuned_evaluations","gpt4_outputs_finetuned.jsonl",
-        "--output_dir", "${workspaceFolder}"
+        "--output_dir", "${workspaceFolder}\\..\\..\\..\\data\\iclr\\logs-2023-09-25-101314\\eval-ppo-apa"
       ],
       "justMyCode": false,
       "console": "integratedTerminal"
