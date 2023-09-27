@@ -128,7 +128,7 @@ def main(args):
         gpt4_outputs = []
         for i, generation in enumerate(generations):
             user_msg = user_msg_template.copy()
-            user_msg['content'] = user_msg['content'].replace('{prompt}', generation['prompt']).replace('{completion}', generation[model])
+            user_msg['content'] = user_msg['content'].replace('{prompt}', generation['prompt']).replace('{completion}', generation[model]).replace('{ground_truth}', generation['ground_truth'])
 
             samples = []
             for _ in range(3):
