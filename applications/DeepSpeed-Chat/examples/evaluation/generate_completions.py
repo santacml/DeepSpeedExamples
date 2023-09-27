@@ -236,7 +236,7 @@ def get_prompt(ex_completion):
         print("PROMPT NOT FOUND")
     return prompt
 
-def prompt_eval(args, model_baseline, tokenizer, device, prompts):
+def prompt_eval(args, model_baseline, tokenizer, device, prompts, chosens):
     results = []
 
     baseline_lens = []
@@ -260,7 +260,7 @@ def prompt_eval(args, model_baseline, tokenizer, device, prompts):
         scorer = rouge_scorer.RougeScorer(['rouge1', 'rougeL'], use_stemmer=True)
         baseline_rouge_scores = []
 
-    for prompt in prompts:
+    for i,prompt in enumerate(prompts):
         print()
         print()
         print()
@@ -313,6 +313,7 @@ def prompt_eval(args, model_baseline, tokenizer, device, prompts):
         results.append({
             "prompt": prompt,
             "response": cleaned_up_base,
+            "ground_truth": chosens[i],
             "rouge": baseline_rouge_score,
             "prompt_token_len": inputs.input_ids.shape[1],
             "generate_ids": baseline_generate_ids.cpu().tolist()
@@ -423,19 +424,23 @@ def main():
     model_baseline.to(device)
     model_baseline.eval()
 
-    max_samples = 200
+    max_samples = 100
     # max_samples = 5   # temp debug
 
     if args.data_path is not None:
-        data = load_from_disk(args.data_path)["test"]
+        data = load_from_disk(args.data_path)#["test"]
         # prompts = list(set(data["prompt"]))[:250]  # remove duplicates...     this is not deterministic...
 
         # should be deterministic...?
         seen = {}
         prompts = []
-        for prompt in data["prompt"]:
+        chosens = []
+        for d in data:#data["prompt"]:
+            prompt = d["question"]
+            chosen = d['response_j']
             if prompt not in seen:
-                prompts.append(prompt)
+                prompts.append("Question: " + prompt + "\n\nAnswer: ")
+                chosens.append(chosen)
                 seen[prompt] = True
             # if len(prompts) == 250: break
             if len(prompts) == max_samples:
@@ -480,7 +485,7 @@ def main():
         ]
 
     with torch.no_grad():
-        results = prompt_eval(args, model_baseline, tokenizer, device, prompts)
+        results = prompt_eval(args, model_baseline, tokenizer, device, prompts, chosens)
 
     with open(os.path.join(args.output_dir, "outputs.jsonl"), 'w') as fp:
         for line in results:

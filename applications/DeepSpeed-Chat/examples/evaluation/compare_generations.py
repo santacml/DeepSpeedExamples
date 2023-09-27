@@ -236,6 +236,7 @@ def main():
     for prompt in prompts:
         baseline = baseline_model_outputs[prompt]
         finetune = finetune_model_outputs[prompt]
+        
 
         baseline_cleaned = baseline["response"]
         finetune_cleaned = finetune["response"]
@@ -297,6 +298,7 @@ def main():
         results.append({
             "prompt": prompt,
             "baseline": baseline_cleaned,
+            "ground_truth": baseline['ground_truth'],
             "finetuned": finetune_cleaned,
         })
 
