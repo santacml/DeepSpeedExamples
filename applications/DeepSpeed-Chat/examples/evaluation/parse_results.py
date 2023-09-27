@@ -25,7 +25,7 @@ def process_scores(samples):
     counts = {}
     for sample in samples:
 
-        substring = "The integer score out of 9 for this answer is: " 
+        substring = "The integer score out of 5 for this answer is: " 
 
         indexes = [sample.find(substring)]
         index = indexes[0]
